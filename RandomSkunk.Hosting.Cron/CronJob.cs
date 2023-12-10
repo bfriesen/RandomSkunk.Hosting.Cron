@@ -1,4 +1,4 @@
-﻿using Cronos;
+using Cronos;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
@@ -178,6 +178,17 @@ public abstract partial class CronJob : IHostedService, IDisposable
         _currentCronJobTask = ExecuteNextCronJob(cancellationToken);
     }
 
+#pragma warning disable SA1204 // Static elements should appear before instance elements
+#if NET7_0_OR_GREATER
     [GeneratedRegex(_spacesOrTabsPattern)]
     private static partial Regex SpacesOrTabsRegex();
+#else
+    private static Regex SpacesOrTabsRegex() => SpacesOrTabs_Regex.Instance;
+
+    private static class SpacesOrTabs_Regex
+    {
+        public static readonly Regex Instance = new(_spacesOrTabsPattern, RegexOptions.Compiled);
+    }
+#endif
+#pragma warning restore SA1204 // Static elements should appear before instance elements
 }
