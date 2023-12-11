@@ -14,8 +14,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private const string _spacesOrTabsPattern = @"[ \t]+";
 
     private readonly CronExpression _cronExpression;
-    private readonly TimeZoneInfo _timeZoneInfo;
     private readonly ILogger? _logger;
+    private readonly TimeZoneInfo _timeZoneInfo;
 
     private CancellationTokenSource? _stoppingCts;
     private Task? _currentCronJobTask;
@@ -28,15 +28,15 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="cronExpression">A <see cref="CronExpression"/> that represents the schedule of the service. See the
     ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#usage">Cronos documentation</a> for information
     ///     about creating instances of <see cref="CronExpression"/>.</param>
-    /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
-    ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
     /// <param name="logger">An optional <see cref="ILogger"/> that logs an error when the inherited <see cref="DoWork"/> method
     ///     throws an exception.</param>
-    protected CronJob(CronExpression cronExpression, TimeZoneInfo? timeZoneInfo = null, ILogger? logger = null)
+    /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
+    ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZoneInfo = null)
     {
         _cronExpression = cronExpression ?? throw new ArgumentNullException(nameof(cronExpression));
-        _timeZoneInfo = timeZoneInfo ?? TimeZoneInfo.Local;
         _logger = logger;
+        _timeZoneInfo = timeZoneInfo ?? TimeZoneInfo.Local;
     }
 
     /// <summary>
@@ -47,12 +47,12 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="cronExpression">A cron expression that represents the schedule of the service. See the
     ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos documentation</a> for
     ///     information about the format of cron expressions.</param>
-    /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
-    ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
     /// <param name="logger">An optional <see cref="ILogger"/> that logs an error when the inherited <see cref="DoWork"/> method
     ///     throws an exception.</param>
-    protected CronJob(string cronExpression, TimeZoneInfo? timeZoneInfo = null, ILogger? logger = null)
-        : this(ParseCronExpression(cronExpression), timeZoneInfo, logger)
+    /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
+    ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZoneInfo = null)
+        : this(ParseCronExpression(cronExpression), logger, timeZoneInfo)
     {
     }
 
