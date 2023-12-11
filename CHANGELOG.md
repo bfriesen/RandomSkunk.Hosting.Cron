@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [1.0.0] - 2023-12-11
+
 ### Added
 
 - Add initial project, solution, and package structures.
@@ -15,4 +17,5 @@ and this project adheres to [Semantic Versioning].
 [Keep a Changelog]: https://keepachangelog.com/
 [Semantic Versioning]: https://semver.org/
 
-[Unreleased]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v0.0.0...HEAD
+[Unreleased]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v0.0.0...v1.0.0
