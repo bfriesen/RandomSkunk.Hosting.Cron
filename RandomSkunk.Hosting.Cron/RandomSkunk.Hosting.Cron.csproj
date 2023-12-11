@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<Title>RandomSkunk.Hosting.Cron</Title>
-		<Description>An IHostedService that triggers on a cron schedule.</Description>
+		<Description>An IHostedService base class that triggers on a cron schedule.</Description>
 		<Authors>Brian Friesen</Authors>
 		<Copyright>Copyright 2023 (c) Brian Friesen. All rights reserved.</Copyright>
 	</PropertyGroup>
