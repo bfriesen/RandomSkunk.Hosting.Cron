@@ -101,9 +101,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// This method is called each time work is scheduled to run. The implementation should return a task that represents the
     /// asynchronous scheduled operation.
     /// </summary>
-    /// <param name="stoppingToken">Triggered when the service is stopping or the start process has been aborted.</param>
+    /// <param name="cancellationToken">Triggered when the service is stopping or the start process has been aborted.</param>
     /// <returns>A <see cref="Task"/> that represents the asynchronous scheduled operation.</returns>
-    protected abstract Task DoWork(CancellationToken stoppingToken);
+    protected abstract Task DoWork(CancellationToken cancellationToken);
 
     private static CronExpression ParseCronExpression(string cronExpression)
     {
