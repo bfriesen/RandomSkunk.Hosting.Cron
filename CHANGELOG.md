@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Changed
+
+- Log a warning if the cron expression is unreachable.
+
 ## [1.0.0] - 2023-12-11
 
 ### Added

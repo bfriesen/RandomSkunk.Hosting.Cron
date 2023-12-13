@@ -28,8 +28,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="cronExpression">A <see cref="CronExpression"/> that represents the schedule of the service. See the
     ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#usage">Cronos documentation</a> for information
     ///     about creating instances of <see cref="CronExpression"/>.</param>
-    /// <param name="logger">An optional <see cref="ILogger"/> that logs an error when the inherited <see cref="DoWork"/> method
-    ///     throws an exception.</param>
+    /// <param name="logger">An optional <see cref="ILogger"/>.</param>
     /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
     ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
     protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZoneInfo = null)
@@ -47,8 +46,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="cronExpression">A cron expression that represents the schedule of the service. See the
     ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos documentation</a> for
     ///     information about the format of cron expressions.</param>
-    /// <param name="logger">An optional <see cref="ILogger"/> that logs an error when the inherited <see cref="DoWork"/> method
-    ///     throws an exception.</param>
+    /// <param name="logger">An optional <see cref="ILogger"/>.</param>
     /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
     ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
     protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZoneInfo = null)
@@ -123,7 +121,10 @@ public abstract partial class CronJob : IHostedService, IDisposable
         // Do the small amount of cpu-bound housekeeping work first, before any await calls.
         var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZoneInfo);
         if (nextOccurrence is null)
+        {
+            _logger?.LogWarning("Cron expression is unreachable: '{CronExpression}'.", _cronExpression);
             return;
+        }
 
         var delay = (int)(nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds;
 
