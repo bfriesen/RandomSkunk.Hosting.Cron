@@ -14,6 +14,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private const string _spacesOrTabsPattern = @"[ \t]+";
 
     private readonly CronExpression _cronExpression;
+    private readonly string? _cronExpressionLiteral;
     private readonly ILogger? _logger;
     private readonly TimeZoneInfo _timeZoneInfo;
 
@@ -52,6 +53,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZoneInfo = null)
         : this(ParseCronExpression(cronExpression), logger, timeZoneInfo)
     {
+        _cronExpressionLiteral = cronExpression;
     }
 
     /// <inheritdoc/>
@@ -122,7 +124,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
         var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZoneInfo);
         if (nextOccurrence is null)
         {
-            _logger?.LogWarning("Cron expression is unreachable: '{CronExpression}'.", _cronExpression);
+            _logger?.LogWarning(
+                "The cron expression '{CronExpression}' is unreachable and the '{Type}' cron job will never be scheduled.",
+                (object?)_cronExpressionLiteral ?? _cronExpression,
+                GetType());
+
             return;
         }
 
@@ -167,8 +173,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            // Log the exception if a logger was provider.
-            _logger?.LogError(ex, "An exception was thrown in the overridden {TypeName}.DoWork method.", GetType().Name);
+            // Log the exception if a logger was provided.
+            _logger?.LogError(
+                ex,
+                "An exception was thrown while running the scheduled '{Type}' cron job.",
+                GetType());
         }
 
         // Last chance to gracefully handle cancellation before making the recursive call.
