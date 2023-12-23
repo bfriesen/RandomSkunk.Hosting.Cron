@@ -5,12 +5,13 @@
 		<Description>An IHostedService base class that triggers on a cron schedule.</Description>
 		<Authors>Brian Friesen</Authors>
 		<Copyright>Copyright 2023 (c) Brian Friesen. All rights reserved.</Copyright>
+		<DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(Title).xml</DocumentationFile>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)'=='Release'">
 		<TargetFrameworks>net8.0;net7.0;net6.0;netstandard2.1;netstandard2.0;net462</TargetFrameworks>
 
-		<PackageId>RandomSkunk.Hosting.Cron</PackageId>
+		<PackageId>$(Title)</PackageId>
 		<PackageProjectUrl>https://github.com/bfriesen/RandomSkunk.Hosting.Cron</PackageProjectUrl>
 		<PackageTags>cron IHostedService BackgroundService Hosting</PackageTags>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
@@ -30,17 +31,22 @@
 	<PropertyGroup Condition="'$(Configuration)'=='Debug'">
 		<TargetFrameworks>net8.0</TargetFrameworks>
 	</PropertyGroup>
-	
+
 	<ItemGroup>
 		<PackageReference Include="Cronos" Version="0.7.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+		<PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
 	</ItemGroup>
 
 	<ItemGroup>
 		<None Include="..\README.md" Pack="true" PackagePath="\" />
 		<None Include="..\LICENSE" Pack="true" PackagePath="\" />
 		<None Include="..\icon.png" Pack="true" PackagePath="\" />
+		<AdditionalFiles Include="..\stylecop.json" Link="stylecop.json" />
 	</ItemGroup>
 
 </Project>
