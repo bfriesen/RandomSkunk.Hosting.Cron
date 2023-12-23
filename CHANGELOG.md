@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning].
 
 - Log a warning if the cron expression is unreachable.
 
+### Added
+
+- Add options and hot-reloading.
+
 ## [1.0.0] - 2023-12-11
 
 ### Added

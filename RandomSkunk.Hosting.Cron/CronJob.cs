@@ -1,6 +1,8 @@
 using Cronos;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 
 namespace RandomSkunk.Hosting.Cron;
@@ -11,15 +13,52 @@ namespace RandomSkunk.Hosting.Cron;
 /// </summary>
 public abstract partial class CronJob : IHostedService, IDisposable
 {
+    [StringSyntax(StringSyntaxAttribute.Regex)]
     private const string _spacesOrTabsPattern = @"[ \t]+";
 
-    private readonly CronExpression _cronExpression;
-    private readonly string? _cronExpressionLiteral;
+    private readonly string? _cronJobName;
+    private readonly IDisposable? _optionsReloadToken;
     private readonly ILogger? _logger;
-    private readonly TimeZoneInfo _timeZoneInfo;
+
+    private CronExpression _cronExpression;
+    private string? _cronExpressionLiteral;
+    private TimeZoneInfo _timeZone;
 
     private CancellationTokenSource? _stoppingCts;
     private Task? _currentCronJobTask;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CronJob"/> class with the specified options.
+    /// </summary>
+    /// <param name="options">The options for the cron job.</param>
+    /// <param name="cronJobName">The name of the cron job.</param>
+    /// <param name="logger">An optional logger.</param>
+    protected CronJob(IOptionsMonitor<CronJobOptions> options, string cronJobName, ILogger? logger = null)
+    {
+        if (options is null)
+            throw new ArgumentNullException(nameof(options));
+
+        _cronJobName = cronJobName;
+        SetCronExpressionAndTimeZone(options.Get(_cronJobName));
+        _optionsReloadToken = options.OnChange(ReloadCronExpressionAndTimeZone);
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CronJob"/> class with the specified options.
+    /// </summary>
+    /// <param name="options">The options for the cron job.</param>
+    /// <param name="logger">An optional logger.</param>
+    protected CronJob(IOptionsMonitor<CronJobOptions> options, ILogger? logger = null)
+    {
+        if (options is null)
+            throw new ArgumentNullException(nameof(options));
+
+        _cronJobName = GetType().Name;
+        SetCronExpressionAndTimeZone(options.Get(_cronJobName));
+        _optionsReloadToken = options.OnChange(ReloadCronExpressionAndTimeZone);
+        _logger = logger;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CronJob"/> class with the specified <see cref="CronExpression"/>. See the
@@ -30,13 +69,16 @@ public abstract partial class CronJob : IHostedService, IDisposable
     ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#usage">Cronos documentation</a> for information
     ///     about creating instances of <see cref="CronExpression"/>.</param>
     /// <param name="logger">An optional <see cref="ILogger"/>.</param>
-    /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
-    ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
-    protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZoneInfo = null)
+    /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
+    ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
+        _cronJobName = null;
+        _optionsReloadToken = null;
+
         _cronExpression = cronExpression ?? throw new ArgumentNullException(nameof(cronExpression));
+        _timeZone = timeZone ?? TimeZoneInfo.Local;
         _logger = logger;
-        _timeZoneInfo = timeZoneInfo ?? TimeZoneInfo.Local;
     }
 
     /// <summary>
@@ -48,12 +90,18 @@ public abstract partial class CronJob : IHostedService, IDisposable
     ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos documentation</a> for
     ///     information about the format of cron expressions.</param>
     /// <param name="logger">An optional <see cref="ILogger"/>.</param>
-    /// <param name="timeZoneInfo">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling
-    ///     is concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
-    protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZoneInfo = null)
-        : this(ParseCronExpression(cronExpression), logger, timeZoneInfo)
+    /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
+    ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
-        _cronExpressionLiteral = cronExpression;
+        if (cronExpression.IsNullOrEmpty())
+            throw new ArgumentNullException(nameof(cronExpression));
+
+        _cronJobName = null;
+        _optionsReloadToken = null;
+
+        SetCronExpressionAndTimeZone(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
+        _logger = logger;
     }
 
     /// <inheritdoc/>
@@ -96,6 +144,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     public virtual void Dispose()
     {
         _stoppingCts?.Cancel();
+        _optionsReloadToken?.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -107,21 +156,10 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <returns>A <see cref="Task"/> that represents the asynchronous scheduled operation.</returns>
     protected abstract Task DoWork(CancellationToken cancellationToken);
 
-    private static CronExpression ParseCronExpression(string cronExpression)
-    {
-        if (string.IsNullOrEmpty(cronExpression))
-            throw new ArgumentNullException(nameof(cronExpression));
-
-        return CronExpression.Parse(cronExpression, GetCronFormat(cronExpression));
-    }
-
-    private static CronFormat GetCronFormat(string cronExpression) =>
-        SpacesOrTabsRegex().Matches(cronExpression).Count == 5 ? CronFormat.IncludeSeconds : CronFormat.Standard;
-
     private async Task ExecuteNextCronJob(CancellationToken cancellationToken)
     {
         // Do the small amount of cpu-bound housekeeping work first, before any await calls.
-        var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZoneInfo);
+        var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZone);
         if (nextOccurrence is null)
         {
             _logger?.LogWarning(
@@ -186,6 +224,72 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         // Start and store (but don't await) the next cron job task.
         _currentCronJobTask = ExecuteNextCronJob(cancellationToken);
+    }
+
+    [MemberNotNull(nameof(_cronExpression), nameof(_timeZone))]
+    private void SetCronExpressionAndTimeZone(CronJobOptions options)
+    {
+        if (options.CronExpression.IsNullOrEmpty())
+        {
+            if (_cronExpression is null)
+                throw new ArgumentException("The 'CronExpression' setting must not be null or empty.", nameof(options));
+
+            _logger?.LogError("Unable to reload the cron expression: the 'CronExpression' setting is null or empty.");
+        }
+        else if (_cronExpression is null || options.CronExpression != _cronExpressionLiteral)
+        {
+            try
+            {
+                var previousCronExpressionLiteral = _cronExpressionLiteral;
+
+                var cronFormat = options.CronFormat ?? GetCronFormat(options.CronExpression);
+                _cronExpression = CronExpression.Parse(options.CronExpression, cronFormat);
+                _cronExpressionLiteral = options.CronExpression;
+
+                if (previousCronExpressionLiteral is null)
+                    _logger?.LogInformation("Cron expression set to '{Expression}'.", _cronExpressionLiteral);
+                else
+                    _logger?.LogInformation("Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousCronExpressionLiteral, _cronExpressionLiteral);
+            }
+            catch (Exception ex)
+            {
+                if (_cronExpression is null)
+                    throw new ArgumentException($"The 'CronExpression' setting contains an invalid value, '{options.CronExpression}'.", nameof(options), ex);
+
+                _logger?.LogError(ex, "Unable to reload the cron expression: the 'CronExpression' setting contains an invalid value, '{CronExpression}'.", options.CronExpression);
+            }
+        }
+
+        if (_timeZone is null || options.HasDifferentTimeZoneThan(_timeZone))
+        {
+            try
+            {
+                var previousTimeZone = _timeZone;
+
+                _timeZone = options.GetTimeZone();
+
+                if (previousTimeZone is null)
+                    _logger?.LogInformation("Cron time zone set to '{TimeZone}'.", _timeZone.Id);
+                else
+                    _logger?.LogInformation("Cron time zone changed from '{PreviousTimeZone}' to '{NewTimeZone}'.", previousTimeZone.Id, _timeZone.Id);
+            }
+            catch (Exception ex)
+            {
+                if (_timeZone is null)
+                    throw new ArgumentException($"The 'TimeZone' setting contains an invalid value, '{options.TimeZone}'.", nameof(options), ex);
+
+                _logger?.LogError(ex, "Unable to reload the cron time zone: the 'TimeZone' setting contains an invalid value, '{TimeZone}'.", options.TimeZone);
+            }
+        }
+
+        static CronFormat GetCronFormat(string cronExpression) =>
+            SpacesOrTabsRegex().Matches(cronExpression).Count == 5 ? CronFormat.IncludeSeconds : CronFormat.Standard;
+    }
+
+    private void ReloadCronExpressionAndTimeZone(CronJobOptions options, string? optionsName)
+    {
+        if (optionsName == _cronJobName)
+            SetCronExpressionAndTimeZone(options);
     }
 
 #pragma warning disable SA1204 // Static elements should appear before instance elements
