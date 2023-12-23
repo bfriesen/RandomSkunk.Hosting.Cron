@@ -49,4 +49,6 @@
 		<AdditionalFiles Include="..\stylecop.json" Link="stylecop.json" />
 	</ItemGroup>
 
+	<Import Project="..\RandomSkunk.RuntimePolyfill\RandomSkunk.RuntimePolyfill\SharedProject.projitems" Label="Shared" />
+
 </Project>
