@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning].
 
 ### Changed
 
-- Log a warning if the cron expression is unreachable.
+- Improvements to logging.
 
 ### Added
 
