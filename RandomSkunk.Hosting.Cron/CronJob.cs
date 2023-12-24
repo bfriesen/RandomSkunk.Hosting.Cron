@@ -234,7 +234,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             if (_cronExpression is null)
                 throw new ArgumentException("The 'CronExpression' setting must not be null or empty.", nameof(options));
 
-            _logger?.LogError("Unable to reload the cron expression: the 'CronExpression' setting is null or empty.");
+            _logger?.LogWarning("Unable to reload the cron expression: the 'CronExpression' setting is null or empty.");
         }
         else if (_cronExpression is null || options.CronExpression != _cronExpressionLiteral)
         {
@@ -256,7 +256,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 if (_cronExpression is null)
                     throw new ArgumentException($"The 'CronExpression' setting contains an invalid value, '{options.CronExpression}'.", nameof(options), ex);
 
-                _logger?.LogError(ex, "Unable to reload the cron expression: the 'CronExpression' setting contains an invalid value, '{CronExpression}'.", options.CronExpression);
+                _logger?.LogWarning(
+                    ex,
+                    "Unable to reload the cron expression: the 'CronExpression' setting contains an invalid value, '{InvalidCronExpression}'. The current value, '{CurrentCronExpression}', remains unchanged.",
+                    options.CronExpression,
+                    _cronExpressionLiteral);
             }
         }
 
@@ -278,7 +282,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 if (_timeZone is null)
                     throw new ArgumentException($"The 'TimeZone' setting contains an invalid value, '{options.TimeZone}'.", nameof(options), ex);
 
-                _logger?.LogError(ex, "Unable to reload the cron time zone: the 'TimeZone' setting contains an invalid value, '{TimeZone}'.", options.TimeZone);
+                _logger?.LogWarning(
+                    ex,
+                    "Unable to reload the cron time zone: the 'TimeZone' setting contains an invalid value, '{InvalidTimeZone}'. The current value, '{CurrentTimeZone}', remains unchanged.",
+                    options.TimeZone,
+                    _timeZone.Id);
             }
         }
 
