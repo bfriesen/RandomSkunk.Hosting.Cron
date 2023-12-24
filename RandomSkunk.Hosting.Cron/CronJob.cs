@@ -16,7 +16,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     [StringSyntax(StringSyntaxAttribute.Regex)]
     private const string _spacesOrTabsPattern = @"[ \t]+";
 
-    private readonly string? _cronJobName;
+    private readonly string? _cronJobOptionsName;
     private readonly IDisposable? _optionsReloadToken;
     private readonly ILogger? _logger;
 
@@ -28,35 +28,40 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private Task? _currentCronJobTask;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CronJob"/> class with the specified options.
+    /// Initializes a new instance of the <see cref="CronJob"/> class using the <see cref="CronJobOptions"/> named
+    /// <paramref name="cronJobOptionsName"/> that are monitored by <paramref name="optionsMonitor"/>.
     /// </summary>
-    /// <param name="options">The options for the cron job.</param>
-    /// <param name="cronJobName">The name of the cron job.</param>
+    /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the <see cref="CronJobOptions"/>
+    ///     for the cron job. The options it monitors are named <paramref name="cronJobOptionsName"/>.</param>
+    /// <param name="cronJobOptionsName">The name of the <see cref="CronJobOptions"/> that <paramref name="optionsMonitor"/>
+    ///     monitors.</param>
     /// <param name="logger">An optional logger.</param>
-    protected CronJob(IOptionsMonitor<CronJobOptions> options, string cronJobName, ILogger? logger = null)
+    protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, string cronJobOptionsName, ILogger? logger = null)
     {
-        if (options is null)
-            throw new ArgumentNullException(nameof(options));
+        if (optionsMonitor is null)
+            throw new ArgumentNullException(nameof(optionsMonitor));
 
-        _cronJobName = cronJobName;
-        SetCronExpressionAndTimeZone(options.Get(_cronJobName));
-        _optionsReloadToken = options.OnChange(ReloadCronExpressionAndTimeZone);
+        _cronJobOptionsName = cronJobOptionsName;
+        SetCronExpressionAndTimeZone(optionsMonitor.Get(_cronJobOptionsName));
+        _optionsReloadToken = optionsMonitor.OnChange(ReloadCronExpressionAndTimeZone);
         _logger = logger;
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CronJob"/> class with the specified options.
+    /// Initializes a new instance of the <see cref="CronJob"/> class using the <see cref="CronJobOptions"/> named
+    /// '<c>this.GetType().Name</c>' that are monitored by <paramref name="optionsMonitor"/>.
     /// </summary>
-    /// <param name="options">The options for the cron job.</param>
+    /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the <see cref="CronJobOptions"/>
+    ///     for the cron job. The options it monitors are named after this instance's type name.</param>
     /// <param name="logger">An optional logger.</param>
-    protected CronJob(IOptionsMonitor<CronJobOptions> options, ILogger? logger = null)
+    protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, ILogger? logger = null)
     {
-        if (options is null)
-            throw new ArgumentNullException(nameof(options));
+        if (optionsMonitor is null)
+            throw new ArgumentNullException(nameof(optionsMonitor));
 
-        _cronJobName = GetType().Name;
-        SetCronExpressionAndTimeZone(options.Get(_cronJobName));
-        _optionsReloadToken = options.OnChange(ReloadCronExpressionAndTimeZone);
+        _cronJobOptionsName = GetType().Name;
+        SetCronExpressionAndTimeZone(optionsMonitor.Get(_cronJobOptionsName));
+        _optionsReloadToken = optionsMonitor.OnChange(ReloadCronExpressionAndTimeZone);
         _logger = logger;
     }
 
@@ -73,7 +78,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
     protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
-        _cronJobName = null;
+        _cronJobOptionsName = null;
         _optionsReloadToken = null;
 
         _cronExpression = cronExpression ?? throw new ArgumentNullException(nameof(cronExpression));
@@ -97,7 +102,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (cronExpression.IsNullOrEmpty())
             throw new ArgumentNullException(nameof(cronExpression));
 
-        _cronJobName = null;
+        _cronJobOptionsName = null;
         _optionsReloadToken = null;
 
         SetCronExpressionAndTimeZone(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
@@ -296,7 +301,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
     private void ReloadCronExpressionAndTimeZone(CronJobOptions options, string? optionsName)
     {
-        if (optionsName == _cronJobName)
+        if (optionsName == _cronJobOptionsName)
             SetCronExpressionAndTimeZone(options);
     }
 

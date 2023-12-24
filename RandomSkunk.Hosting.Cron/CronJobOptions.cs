@@ -10,7 +10,8 @@ public class CronJobOptions
 {
     /// <summary>
     /// Gets or sets the cron expression of the cron job. This property must be initialized to a non-empty value before the cron
-    /// job starts.
+    /// job starts. See the <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos
+    /// documentation</a> for information about the format of cron expressions.
     /// </summary>
     [DisallowNull]
     public string? CronExpression { get; set; }
