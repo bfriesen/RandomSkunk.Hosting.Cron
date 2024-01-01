@@ -24,7 +24,16 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private string? _cronExpressionLiteral;
     private TimeZoneInfo _timeZone;
 
+    /// <summary>
+    /// Triggered when stopping the service.
+    /// </summary>
     private CancellationTokenSource? _stoppingCts;
+
+    /// <summary>
+    /// Triggered when reloading the cron job's settings, linked to <see cref="_stoppingCts"/>.
+    /// </summary>
+    private CancellationTokenSource? _reloadingCts;
+
     private Task? _currentCronJobTask;
 
     /// <summary>
@@ -36,14 +45,15 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="cronJobOptionsName">The name of the <see cref="CronJobOptions"/> that <paramref name="optionsMonitor"/>
     ///     monitors.</param>
     /// <param name="logger">An optional logger.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="optionsMonitor"/> is null.</exception>
     protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, string cronJobOptionsName, ILogger? logger = null)
     {
         if (optionsMonitor is null)
             throw new ArgumentNullException(nameof(optionsMonitor));
 
         _cronJobOptionsName = cronJobOptionsName;
-        SetCronExpressionAndTimeZone(optionsMonitor.Get(_cronJobOptionsName));
-        _optionsReloadToken = optionsMonitor.OnChange(ReloadCronExpressionAndTimeZone);
+        LoadSettings(optionsMonitor.Get(_cronJobOptionsName));
+        _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
         _logger = logger;
     }
 
@@ -54,14 +64,17 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the <see cref="CronJobOptions"/>
     ///     for the cron job. The options it monitors are named after this instance's type name.</param>
     /// <param name="logger">An optional logger.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="optionsMonitor"/> is null.</exception>
+    /// <exception cref="ArgumentException">If the <see cref="CronJobOptions.CronExpression"/> or
+    ///     <see cref="CronJobOptions.TimeZone"/> properties are invalid.</exception>
     protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, ILogger? logger = null)
     {
         if (optionsMonitor is null)
             throw new ArgumentNullException(nameof(optionsMonitor));
 
         _cronJobOptionsName = GetType().Name;
-        SetCronExpressionAndTimeZone(optionsMonitor.Get(_cronJobOptionsName));
-        _optionsReloadToken = optionsMonitor.OnChange(ReloadCronExpressionAndTimeZone);
+        LoadSettings(optionsMonitor.Get(_cronJobOptionsName));
+        _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
         _logger = logger;
     }
 
@@ -76,6 +89,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="logger">An optional <see cref="ILogger"/>.</param>
     /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
     ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null.</exception>
     protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
         _cronJobOptionsName = null;
@@ -97,6 +111,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="logger">An optional <see cref="ILogger"/>.</param>
     /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
     ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null or empty.</exception>
+    /// <exception cref="ArgumentException">If <paramref name="cronExpression"/> is invalid.</exception>
     protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
         if (cronExpression.IsNullOrEmpty())
@@ -105,18 +121,21 @@ public abstract partial class CronJob : IHostedService, IDisposable
         _cronJobOptionsName = null;
         _optionsReloadToken = null;
 
-        SetCronExpressionAndTimeZone(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
+        LoadSettings(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
         _logger = logger;
     }
 
     /// <inheritdoc/>
     public virtual Task StartAsync(CancellationToken cancellationToken)
     {
-        // Create linked token to allow cancelling the cron job task from the provided token.
+        // Link the stopping token to the provided token.
         _stoppingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+        // Link the reloading token to the stopping token, which is linked to the provided token.
+        _reloadingCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token);
+
         // Start and store (but don't await) the next cron job task.
-        _currentCronJobTask = ExecuteNextCronJob(_stoppingCts.Token);
+        _currentCronJobTask = ExecuteNextCronJob(_stoppingCts.Token, _reloadingCts.Token);
 
         // If the task is completed then return it, this will bubble cancellation and failure to the caller.
         if (_currentCronJobTask.IsCompleted)
@@ -130,13 +149,13 @@ public abstract partial class CronJob : IHostedService, IDisposable
     public virtual async Task StopAsync(CancellationToken cancellationToken)
     {
         // Stop called without start.
-        if (_currentCronJobTask == null)
+        if (!IsStarted())
             return;
 
         try
         {
-            // Signal cancellation to the executing method.
-            _stoppingCts!.Cancel();
+            // Signal stopping cancellation to the executing method.
+            _stoppingCts.Cancel();
         }
         finally
         {
@@ -161,7 +180,10 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <returns>A <see cref="Task"/> that represents the asynchronous scheduled operation.</returns>
     protected abstract Task DoWork(CancellationToken cancellationToken);
 
-    private async Task ExecuteNextCronJob(CancellationToken cancellationToken)
+    /// <param name="stoppingToken">Triggered when stopping the service.</param>
+    /// <param name="reloadingToken">Triggered when reloading the cron job's settings, linked to
+    ///     <paramref name="stoppingToken"/>.</param>
+    private async Task ExecuteNextCronJob(CancellationToken stoppingToken, CancellationToken reloadingToken)
     {
         // Do the small amount of cpu-bound housekeeping work first, before any await calls.
         var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZone);
@@ -178,7 +200,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         var delay = (int)(nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds;
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
-        if (cancellationToken.IsCancellationRequested)
+        if (reloadingToken.IsCancellationRequested)
             return;
 
         if (delay >= 1)
@@ -189,7 +211,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             try
             {
                 // Wait until the delay time is over or the stop token triggers.
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(delay, reloadingToken).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {
@@ -207,7 +229,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         try
         {
             // Do the actual work of the cron job.
-            await DoWork(cancellationToken).ConfigureAwait(false);
+            await DoWork(stoppingToken).ConfigureAwait(false);
         }
         catch (TaskCanceledException)
         {
@@ -224,16 +246,18 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
 
         // Last chance to gracefully handle cancellation before making the recursive call.
-        if (cancellationToken.IsCancellationRequested)
+        if (reloadingToken.IsCancellationRequested)
             return;
 
         // Start and store (but don't await) the next cron job task.
-        _currentCronJobTask = ExecuteNextCronJob(cancellationToken);
+        _currentCronJobTask = ExecuteNextCronJob(stoppingToken, reloadingToken);
     }
 
     [MemberNotNull(nameof(_cronExpression), nameof(_timeZone))]
-    private void SetCronExpressionAndTimeZone(CronJobOptions options)
+    private bool LoadSettings(CronJobOptions options)
     {
+        var settingsChanged = false;
+
         if (options.CronExpression.IsNullOrEmpty())
         {
             if (_cronExpression is null)
@@ -250,9 +274,10 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 var cronFormat = options.CronFormat ?? GetCronFormat(options.CronExpression);
                 _cronExpression = CronExpression.Parse(options.CronExpression, cronFormat);
                 _cronExpressionLiteral = options.CronExpression;
+                settingsChanged = true;
 
                 if (previousCronExpressionLiteral is null)
-                    _logger?.LogInformation("Cron expression set to '{Expression}'.", _cronExpressionLiteral);
+                    _logger?.LogDebug("Cron expression set to '{Expression}'.", _cronExpressionLiteral);
                 else
                     _logger?.LogInformation("Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousCronExpressionLiteral, _cronExpressionLiteral);
             }
@@ -276,9 +301,10 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 var previousTimeZone = _timeZone;
 
                 _timeZone = options.GetTimeZone();
+                settingsChanged = true;
 
                 if (previousTimeZone is null)
-                    _logger?.LogInformation("Cron time zone set to '{TimeZone}'.", _timeZone.Id);
+                    _logger?.LogDebug("Cron time zone set to '{TimeZone}'.", _timeZone.Id);
                 else
                     _logger?.LogInformation("Cron time zone changed from '{PreviousTimeZone}' to '{NewTimeZone}'.", previousTimeZone.Id, _timeZone.Id);
             }
@@ -295,14 +321,44 @@ public abstract partial class CronJob : IHostedService, IDisposable
             }
         }
 
+        return settingsChanged;
+
         static CronFormat GetCronFormat(string cronExpression) =>
             SpacesOrTabsRegex().Matches(cronExpression).Count == 5 ? CronFormat.IncludeSeconds : CronFormat.Standard;
     }
 
-    private void ReloadCronExpressionAndTimeZone(CronJobOptions options, string? optionsName)
+    private async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
     {
-        if (optionsName == _cronJobOptionsName)
-            SetCronExpressionAndTimeZone(options);
+        // Make sure we're looking at the right options.
+        if (optionsName != _cronJobOptionsName)
+            return;
+
+        // Reload the settings. If nothing changed, we don't need to restart the background task.
+        if (!LoadSettings(options))
+            return;
+
+        // If the options change before the service is started, we don't need to restart the background task.
+        if (!IsStarted())
+            return;
+
+        // Signal reloading cancellation to the executing method.
+        _reloadingCts.Cancel();
+
+        // Wait until the task completes.
+        await _currentCronJobTask.ConfigureAwait(false);
+
+        // Recreate the reloading token.
+        _reloadingCts.Dispose();
+        _reloadingCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token);
+
+        // Start and store (but don't await) the next cron job task.
+        _currentCronJobTask = ExecuteNextCronJob(_stoppingCts.Token, _reloadingCts.Token);
+    }
+
+    [MemberNotNullWhen(true, nameof(_currentCronJobTask), nameof(_stoppingCts), nameof(_reloadingCts))]
+    private bool IsStarted()
+    {
+        return _currentCronJobTask is not null;
     }
 
 #pragma warning disable SA1204 // Static elements should appear before instance elements
