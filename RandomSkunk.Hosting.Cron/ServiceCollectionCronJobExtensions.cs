@@ -27,7 +27,7 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="services">The <see cref="IServiceCollection"/> to register with.</param>
     /// <param name="implementationFactory">A factory to create new instances of the cron job implementation.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         Func<IServiceProvider, TCronJob> implementationFactory)
@@ -43,20 +43,14 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="cronJobOptionsName">The name used to configure the cron job's <see cref="CronJobOptions"/>.</param>
     /// <param name="configureOptions">A delegate to set the values of the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         string cronJobOptionsName,
         Action<CronJobOptions> configureOptions)
-        where TCronJob : CronJob
-    {
-        services.AddHostedService<TCronJob>();
-
-        if (configureOptions is not null)
-            services.Configure(cronJobOptionsName ?? string.Empty, configureOptions);
-
-        return services;
-    }
+        where TCronJob : CronJob =>
+        services.AddHostedService<TCronJob>()
+            .Configure(cronJobOptionsName ?? throw new ArgumentNullException(nameof(cronJobOptionsName)), configureOptions);
 
     /// <summary>
     /// Add an <see cref="IHostedService"/> registration for the given cron job type. The cron job's <see cref="CronJobOptions"/>
@@ -67,20 +61,14 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="cronJobOptionsName">The name used to configure the cron job's <see cref="CronJobOptions"/>.</param>
     /// <param name="configuration">A configuration to bind to the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         string cronJobOptionsName,
         IConfiguration configuration)
-        where TCronJob : CronJob
-    {
-        services.AddHostedService<TCronJob>();
-
-        if (configuration is not null)
-            services.Configure<CronJobOptions>(cronJobOptionsName ?? string.Empty, configuration);
-
-        return services;
-    }
+        where TCronJob : CronJob =>
+        services.AddHostedService<TCronJob>()
+            .Configure<CronJobOptions>(cronJobOptionsName ?? throw new ArgumentNullException(nameof(cronJobOptionsName)), configuration);
 
     /// <summary>
     /// Add an <see cref="IHostedService"/> registration for the given cron job type. The cron job's <see cref="CronJobOptions"/>
@@ -92,21 +80,15 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="cronJobOptionsName">The name used to configure the cron job's <see cref="CronJobOptions"/>.</param>
     /// <param name="configureOptions">A delegate to set the values of the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         Func<IServiceProvider, TCronJob> implementationFactory,
         string cronJobOptionsName,
         Action<CronJobOptions> configureOptions)
-        where TCronJob : CronJob
-    {
-        services.AddHostedService(implementationFactory);
-
-        if (configureOptions is not null)
-            services.Configure(cronJobOptionsName ?? string.Empty, configureOptions);
-
-        return services;
-    }
+        where TCronJob : CronJob =>
+        services.AddHostedService(implementationFactory)
+            .Configure(cronJobOptionsName ?? throw new ArgumentNullException(nameof(cronJobOptionsName)), configureOptions);
 
     /// <summary>
     /// Add an <see cref="IHostedService"/> registration for the given cron job type. The cron job's <see cref="CronJobOptions"/>
@@ -118,21 +100,15 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="cronJobOptionsName">The name used to configure the cron job's <see cref="CronJobOptions"/>.</param>
     /// <param name="configuration">A configuration to bind to the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         Func<IServiceProvider, TCronJob> implementationFactory,
         string cronJobOptionsName,
         IConfiguration configuration)
-        where TCronJob : CronJob
-    {
-        services.AddHostedService(implementationFactory);
-
-        if (configuration is not null)
-            services.Configure<CronJobOptions>(cronJobOptionsName ?? string.Empty, configuration);
-
-        return services;
-    }
+        where TCronJob : CronJob =>
+        services.AddHostedService(implementationFactory)
+            .Configure<CronJobOptions>(cronJobOptionsName ?? throw new ArgumentNullException(nameof(cronJobOptionsName)), configuration);
 
     /// <summary>
     /// Add an <see cref="IHostedService"/> registration for the given cron job type. The cron job's <see cref="CronJobOptions"/>
@@ -143,7 +119,7 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="services">The <see cref="IServiceCollection"/> to register with.</param>
     /// <param name="configureOptions">A delegate to set the values of the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         Action<CronJobOptions> configureOptions)
@@ -159,7 +135,7 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="services">The <see cref="IServiceCollection"/> to register with.</param>
     /// <param name="configuration">A configuration to bind to the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -176,7 +152,7 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="implementationFactory">A factory to create new instances of the cron job implementation.</param>
     /// <param name="configureOptions">A delegate to set the values of the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         Func<IServiceProvider, TCronJob> implementationFactory,
@@ -194,7 +170,7 @@ public static class ServiceCollectionCronJobExtensions
     /// <param name="implementationFactory">A factory to create new instances of the cron job implementation.</param>
     /// <param name="configuration">A configuration to bind to the cron job's <see cref="CronJobOptions"/>.</param>
     /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
     public static IServiceCollection AddCronJob<TCronJob>(
         this IServiceCollection services,
         Func<IServiceProvider, TCronJob> implementationFactory,
