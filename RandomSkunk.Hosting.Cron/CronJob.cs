@@ -25,23 +25,24 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private TimeZoneInfo _timeZone;
 
     /// <summary>
-    /// Triggered when stopping the service.
+    /// Triggered when stopping the service. Also triggered by the <see cref="StartAsync"/> method's cancellation token.
     /// </summary>
     private CancellationTokenSource? _stoppingCts;
 
     /// <summary>
-    /// Triggered when reloading the cron job's settings, linked to <see cref="_stoppingCts"/>.
+    /// Triggered when reloading the cron job's settings. Also triggered by <see cref="_stoppingCts"/> and the
+    /// <see cref="StartAsync"/> method's cancellation token.
     /// </summary>
     private CancellationTokenSource? _reloadingCts;
 
     private Task? _currentCronJobTask;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CronJob"/> class using the <see cref="CronJobOptions"/> named
-    /// <paramref name="cronJobOptionsName"/> that are monitored by <paramref name="optionsMonitor"/>.
+    /// Initializes a new instance of the <see cref="CronJob"/> class using the monitored <see cref="CronJobOptions"/> named
+    /// <paramref name="cronJobOptionsName"/>.
     /// </summary>
-    /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the <see cref="CronJobOptions"/>
-    ///     for the cron job. The options it monitors are named <paramref name="cronJobOptionsName"/>.</param>
+    /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the cron job's
+    ///     <see cref="CronJobOptions"/>. The options it monitors are named <paramref name="cronJobOptionsName"/>.</param>
     /// <param name="cronJobOptionsName">The name of the <see cref="CronJobOptions"/> that <paramref name="optionsMonitor"/>
     ///     monitors.</param>
     /// <param name="logger">An optional logger.</param>
@@ -58,11 +59,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CronJob"/> class using the <see cref="CronJobOptions"/> named
-    /// '<c>this.GetType().Name</c>' that are monitored by <paramref name="optionsMonitor"/>.
+    /// Initializes a new instance of the <see cref="CronJob"/> class using the monitored <see cref="CronJobOptions"/> named this
+    /// instance's type name.
     /// </summary>
-    /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the <see cref="CronJobOptions"/>
-    ///     for the cron job. The options it monitors are named after this instance's type name.</param>
+    /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the cron job's
+    ///     <see cref="CronJobOptions"/>. The options it monitors are named this instance's type name.</param>
     /// <param name="logger">An optional logger.</param>
     /// <exception cref="ArgumentNullException">If <paramref name="optionsMonitor"/> is null.</exception>
     /// <exception cref="ArgumentException">If the <see cref="CronJobOptions.CronExpression"/> or
@@ -92,12 +93,13 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null.</exception>
     protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
-        _cronJobOptionsName = null;
-        _optionsReloadToken = null;
-
         _cronExpression = cronExpression ?? throw new ArgumentNullException(nameof(cronExpression));
         _timeZone = timeZone ?? TimeZoneInfo.Local;
         _logger = logger;
+
+        // Opt out of options and reloading for this constructor.
+        _cronJobOptionsName = null;
+        _optionsReloadToken = null;
     }
 
     /// <summary>
@@ -118,11 +120,12 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (cronExpression.IsNullOrEmpty())
             throw new ArgumentNullException(nameof(cronExpression));
 
-        _cronJobOptionsName = null;
-        _optionsReloadToken = null;
-
         LoadSettings(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
         _logger = logger;
+
+        // Opt out of options and reloading for this constructor.
+        _cronJobOptionsName = null;
+        _optionsReloadToken = null;
     }
 
     /// <inheritdoc/>
@@ -180,9 +183,10 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <returns>A <see cref="Task"/> that represents the asynchronous scheduled operation.</returns>
     protected abstract Task DoWork(CancellationToken cancellationToken);
 
-    /// <param name="stoppingToken">Triggered when stopping the service.</param>
-    /// <param name="reloadingToken">Triggered when reloading the cron job's settings, linked to
-    ///     <paramref name="stoppingToken"/>.</param>
+    /// <param name="stoppingToken">Triggered when stopping the service. Also triggered by the <see cref="StartAsync"/> method's
+    ///     cancellation token.</param>
+    /// <param name="reloadingToken">Triggered when reloading the cron job's settings. Also triggered by
+    ///     <paramref name="stoppingToken"/> and the <see cref="StartAsync"/> method's cancellation token.</param>
     private async Task ExecuteNextCronJob(CancellationToken stoppingToken, CancellationToken reloadingToken)
     {
         // Do the small amount of cpu-bound housekeeping work first, before any await calls.
@@ -333,11 +337,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (optionsName != _cronJobOptionsName)
             return;
 
-        // Reload the settings. If nothing changed, we don't need to restart the background task.
+        // Reload the settings. If nothing changed, don't restart the background task.
         if (!LoadSettings(options))
             return;
 
-        // If the options change before the service is started, we don't need to restart the background task.
+        // If the options change before the service starts, don't restart the background task.
         if (!IsStarted())
             return;
 
