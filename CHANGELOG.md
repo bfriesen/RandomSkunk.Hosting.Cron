@@ -7,14 +7,15 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
-### Changed
-
-- Improvements to logging.
-
 ### Added
 
 - Add options and hot-reloading.
 - Add `IServiceCollection.AddCronJob<TCronJob>` extension methods.
+
+### Changed
+
+- Improvements to logging.
+- Update Cronos package to latest version.
 
 ## [1.0.0] - 2023-12-11
 

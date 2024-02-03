@@ -21,7 +21,6 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private readonly ILogger? _logger;
 
     private CronExpression _cronExpression;
-    private string? _cronExpressionLiteral;
     private TimeZoneInfo _timeZone;
 
     /// <summary>
@@ -195,7 +194,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         {
             _logger?.LogWarning(
                 "The cron expression '{CronExpression}' is unreachable and the '{Type}' cron job will never be scheduled.",
-                (object?)_cronExpressionLiteral ?? _cronExpression,
+                _cronExpression,
                 GetType());
 
             return;
@@ -269,21 +268,20 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
             _logger?.LogWarning("Unable to reload the cron expression: the 'CronExpression' setting is null or empty.");
         }
-        else if (_cronExpression is null || options.CronExpression != _cronExpressionLiteral)
+        else if (_cronExpression is null || options.CronExpression != _cronExpression.ToString())
         {
             try
             {
-                var previousCronExpressionLiteral = _cronExpressionLiteral;
+                var previousCronExpression = _cronExpression;
 
                 var cronFormat = options.CronFormat ?? GetCronFormat(options.CronExpression);
                 _cronExpression = CronExpression.Parse(options.CronExpression, cronFormat);
-                _cronExpressionLiteral = options.CronExpression;
                 settingsChanged = true;
 
-                if (previousCronExpressionLiteral is null)
-                    _logger?.LogDebug("Cron expression set to '{Expression}'.", _cronExpressionLiteral);
+                if (previousCronExpression is null)
+                    _logger?.LogDebug("Cron expression set to '{Expression}'.", _cronExpression);
                 else
-                    _logger?.LogInformation("Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousCronExpressionLiteral, _cronExpressionLiteral);
+                    _logger?.LogInformation("Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousCronExpression, _cronExpression);
             }
             catch (Exception ex)
             {
@@ -294,7 +292,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
                     ex,
                     "Unable to reload the cron expression: the 'CronExpression' setting contains an invalid value, '{InvalidCronExpression}'. The current value, '{CurrentCronExpression}', remains unchanged.",
                     options.CronExpression,
-                    _cronExpressionLiteral);
+                    _cronExpression);
             }
         }
 
