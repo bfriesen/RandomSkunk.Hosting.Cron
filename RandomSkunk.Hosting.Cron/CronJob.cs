@@ -24,13 +24,13 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private TimeZoneInfo _timeZone;
 
     /// <summary>
-    /// Triggered when stopping the service. Also triggered by the <see cref="StartAsync"/> method's cancellation token.
+    /// Triggered when stopping the service. Linked to the <see cref="StartAsync"/> method's cancellation token.
     /// </summary>
     private CancellationTokenSource? _stoppingCts;
 
     /// <summary>
-    /// Triggered when reloading the cron job's settings. Also triggered by <see cref="_stoppingCts"/> and the
-    /// <see cref="StartAsync"/> method's cancellation token.
+    /// Triggered when reloading the cron job's settings. Linked to <see cref="_stoppingCts"/> and the <see cref="StartAsync"/>
+    /// method's cancellation token.
     /// </summary>
     private CancellationTokenSource? _reloadingCts;
 
@@ -127,6 +127,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
         _optionsReloadToken = null;
     }
 
+    [MemberNotNullWhen(true, nameof(_currentCronJobTask), nameof(_stoppingCts), nameof(_reloadingCts))]
+    private bool IsStarted => _currentCronJobTask is not null;
+
     /// <inheritdoc/>
     public virtual Task StartAsync(CancellationToken cancellationToken)
     {
@@ -137,7 +140,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         _reloadingCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token);
 
         // Start and store (but don't await) the next cron job task.
-        _currentCronJobTask = ExecuteNextCronJob(_stoppingCts.Token, _reloadingCts.Token);
+        _currentCronJobTask = ExecuteNextCronJob();
 
         // If the task is completed then return it, this will bubble cancellation and failure to the caller.
         if (_currentCronJobTask.IsCompleted)
@@ -151,7 +154,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     public virtual async Task StopAsync(CancellationToken cancellationToken)
     {
         // Stop called without start.
-        if (!IsStarted())
+        if (!IsStarted)
             return;
 
         try
@@ -182,11 +185,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <returns>A <see cref="Task"/> that represents the asynchronous scheduled operation.</returns>
     protected abstract Task DoWork(CancellationToken cancellationToken);
 
-    /// <param name="stoppingToken">Triggered when stopping the service. Also triggered by the <see cref="StartAsync"/> method's
-    ///     cancellation token.</param>
-    /// <param name="reloadingToken">Triggered when reloading the cron job's settings. Also triggered by
-    ///     <paramref name="stoppingToken"/> and the <see cref="StartAsync"/> method's cancellation token.</param>
-    private async Task ExecuteNextCronJob(CancellationToken stoppingToken, CancellationToken reloadingToken)
+    private async Task ExecuteNextCronJob()
     {
         // Do the small amount of cpu-bound housekeeping work first, before any await calls.
         var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZone);
@@ -203,7 +202,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         var delay = (int)(nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds;
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
-        if (reloadingToken.IsCancellationRequested)
+        if (_reloadingCts!.Token.IsCancellationRequested)
             return;
 
         if (delay >= 1)
@@ -214,7 +213,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             try
             {
                 // Wait until the delay time is over or the stop token triggers.
-                await Task.Delay(delay, reloadingToken).ConfigureAwait(false);
+                await Task.Delay(delay, _reloadingCts!.Token).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {
@@ -232,7 +231,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         try
         {
             // Do the actual work of the cron job.
-            await DoWork(stoppingToken).ConfigureAwait(false);
+            await DoWork(_stoppingCts!.Token).ConfigureAwait(false);
         }
         catch (TaskCanceledException)
         {
@@ -249,11 +248,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
 
         // Last chance to gracefully handle cancellation before making the recursive call.
-        if (reloadingToken.IsCancellationRequested)
+        if (_reloadingCts!.Token.IsCancellationRequested)
             return;
 
         // Start and store (but don't await) the next cron job task.
-        _currentCronJobTask = ExecuteNextCronJob(stoppingToken, reloadingToken);
+        _currentCronJobTask = ExecuteNextCronJob();
     }
 
     [MemberNotNull(nameof(_cronExpression), nameof(_timeZone))]
@@ -340,7 +339,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             return;
 
         // If the options change before the service starts, don't restart the background task.
-        if (!IsStarted())
+        if (!IsStarted)
             return;
 
         // Signal reloading cancellation to the executing method.
@@ -354,13 +353,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         _reloadingCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token);
 
         // Start and store (but don't await) the next cron job task.
-        _currentCronJobTask = ExecuteNextCronJob(_stoppingCts.Token, _reloadingCts.Token);
-    }
-
-    [MemberNotNullWhen(true, nameof(_currentCronJobTask), nameof(_stoppingCts), nameof(_reloadingCts))]
-    private bool IsStarted()
-    {
-        return _currentCronJobTask is not null;
+        _currentCronJobTask = ExecuteNextCronJob();
     }
 
 #pragma warning disable SA1204 // Static elements should appear before instance elements
