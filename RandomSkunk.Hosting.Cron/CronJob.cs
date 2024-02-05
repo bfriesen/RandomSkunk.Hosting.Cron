@@ -2,6 +2,7 @@ using Cronos;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 
@@ -187,6 +188,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
     private async Task ExecuteNextCronJob()
     {
+        Debug.Assert((_stoppingCts, _reloadingCts) is (not null, not null), $"{nameof(_stoppingCts)} and {nameof(_reloadingCts)} must be initialized before calling {nameof(ExecuteNextCronJob)}.");
+
         // Do the small amount of cpu-bound housekeeping work first, before any await calls.
         var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZone);
         if (nextOccurrence is null)
@@ -202,7 +205,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         var delay = (int)(nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds;
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
-        if (_reloadingCts!.Token.IsCancellationRequested)
+        if (_reloadingCts.Token.IsCancellationRequested)
             return;
 
         if (delay >= 1)
@@ -213,7 +216,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             try
             {
                 // Wait until the delay time is over or the stop token triggers.
-                await Task.Delay(delay, _reloadingCts!.Token).ConfigureAwait(false);
+                await Task.Delay(delay, _reloadingCts.Token).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {
@@ -231,7 +234,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         try
         {
             // Do the actual work of the cron job.
-            await DoWork(_stoppingCts!.Token).ConfigureAwait(false);
+            await DoWork(_stoppingCts.Token).ConfigureAwait(false);
         }
         catch (TaskCanceledException)
         {
@@ -248,7 +251,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
 
         // Last chance to gracefully handle cancellation before making the recursive call.
-        if (_reloadingCts!.Token.IsCancellationRequested)
+        if (_reloadingCts.Token.IsCancellationRequested)
             return;
 
         // Start and store (but don't await) the next cron job task.
