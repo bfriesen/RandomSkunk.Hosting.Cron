@@ -117,7 +117,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <exception cref="ArgumentException">If <paramref name="cronExpression"/> is invalid.</exception>
     protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
-        if (cronExpression.IsNullOrEmpty())
+        if (string.IsNullOrEmpty(cronExpression))
             throw new ArgumentNullException(nameof(cronExpression));
 
         LoadSettings(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
@@ -205,7 +205,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         var delay = (int)(nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds;
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
-        if (_reloadingCts.Token.IsCancellationRequested)
+        if (_reloadingCts!.Token.IsCancellationRequested)
             return;
 
         if (delay >= 1)
@@ -215,7 +215,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             // service will eventually throw an unrecoverable stack overflow exception.
             try
             {
-                // Wait until the delay time is over or the stop token triggers.
+                // Wait until the delay time is over or the stop or reload token triggers.
                 await Task.Delay(delay, _reloadingCts.Token).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
@@ -234,7 +234,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         try
         {
             // Do the actual work of the cron job.
-            await DoWork(_stoppingCts.Token).ConfigureAwait(false);
+            await DoWork(_stoppingCts!.Token).ConfigureAwait(false);
         }
         catch (TaskCanceledException)
         {
@@ -263,7 +263,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     {
         var settingsChanged = false;
 
-        if (options.CronExpression.IsNullOrEmpty())
+        if (string.IsNullOrEmpty(options.CronExpression))
         {
             if (_cronExpression is null)
                 throw new ArgumentException("The 'CronExpression' setting must not be null or empty.", nameof(options));
@@ -276,7 +276,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             {
                 var previousCronExpression = _cronExpression;
 
-                var cronFormat = options.CronFormat ?? GetCronFormat(options.CronExpression);
+                var cronFormat = options.CronFormat ?? GetCronFormat(options.CronExpression!);
                 _cronExpression = CronExpression.Parse(options.CronExpression, cronFormat);
                 settingsChanged = true;
 
