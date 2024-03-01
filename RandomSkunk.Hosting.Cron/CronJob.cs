@@ -195,6 +195,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (nextOccurrence is null)
         {
             _logger?.LogWarning(
+                -1749327138,
                 "The cron expression '{CronExpression}' is unreachable and the '{Type}' cron job will never be scheduled.",
                 _cronExpression,
                 GetType());
@@ -245,6 +246,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         {
             // Log the exception if a logger was provided.
             _logger?.LogError(
+                -631620540,
                 ex,
                 "An exception was thrown while running the scheduled '{Type}' cron job.",
                 GetType());
@@ -268,7 +270,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             if (_cronExpression is null)
                 throw new ArgumentException("The 'CronExpression' setting must not be null or empty.", nameof(options));
 
-            _logger?.LogWarning("Unable to reload the cron expression: the 'CronExpression' setting is null or empty.");
+            _logger?.LogWarning(1942793153, "Unable to reload the cron expression: the 'CronExpression' setting is null or empty.");
         }
         else if (_cronExpression is null || options.CronExpression != _cronExpression.ToString())
         {
@@ -281,9 +283,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 settingsChanged = true;
 
                 if (previousCronExpression is null)
-                    _logger?.LogDebug("Cron expression set to '{Expression}'.", _cronExpression);
+                    _logger?.LogDebug(-583760094, "Cron expression set to '{Expression}'.", _cronExpression);
                 else
-                    _logger?.LogInformation("Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousCronExpression, _cronExpression);
+                    _logger?.LogInformation(1197508750, "Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousCronExpression, _cronExpression);
             }
             catch (Exception ex)
             {
@@ -291,6 +293,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
                     throw new ArgumentException($"The 'CronExpression' setting contains an invalid value, '{options.CronExpression}'.", nameof(options), ex);
 
                 _logger?.LogWarning(
+                    1884538533,
                     ex,
                     "Unable to reload the cron expression: the 'CronExpression' setting contains an invalid value, '{InvalidCronExpression}'. The current value, '{CurrentCronExpression}', remains unchanged.",
                     options.CronExpression,
@@ -308,9 +311,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 settingsChanged = true;
 
                 if (previousTimeZone is null)
-                    _logger?.LogDebug("Cron time zone set to '{TimeZone}'.", _timeZone.Id);
+                    _logger?.LogDebug(-679945320, "Cron time zone set to '{TimeZone}'.", _timeZone.Id);
                 else
-                    _logger?.LogInformation("Cron time zone changed from '{PreviousTimeZone}' to '{NewTimeZone}'.", previousTimeZone.Id, _timeZone.Id);
+                    _logger?.LogInformation(827525297, "Cron time zone changed from '{PreviousTimeZone}' to '{NewTimeZone}'.", previousTimeZone.Id, _timeZone.Id);
             }
             catch (Exception ex)
             {
@@ -318,6 +321,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
                     throw new ArgumentException($"The 'TimeZone' setting contains an invalid value, '{options.TimeZone}'.", nameof(options), ex);
 
                 _logger?.LogWarning(
+                    -1218376460,
                     ex,
                     "Unable to reload the cron time zone: the 'TimeZone' setting contains an invalid value, '{InvalidTimeZone}'. The current value, '{CurrentTimeZone}', remains unchanged.",
                     options.TimeZone,
