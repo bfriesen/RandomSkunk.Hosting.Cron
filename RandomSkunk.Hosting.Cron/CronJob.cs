@@ -203,6 +203,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
             return;
         }
 
+        _logger?.LogDebug(-159904559, "Cron job '{CronJobName}' is scheduled to run next at {NextOccurrence:G}.", _cronJobOptionsName, nextOccurrence);
+
         var delay = (int)(nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds;
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
