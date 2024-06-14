@@ -28,7 +28,4 @@ Global
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {ABF354D5-EB47-429E-B7E0-D3EF614985F4}
 	EndGlobalSection
-	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		RandomSkunk.RuntimePolyfill\RandomSkunk.RuntimePolyfill\SharedProject.projitems*{9ed9bb19-be86-436c-8f57-1283b78e1e9b}*SharedItemsImports = 5
-	EndGlobalSection
 EndGlobal
