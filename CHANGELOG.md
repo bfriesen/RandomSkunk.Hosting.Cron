@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [1.1.0] - 2024-6-14
+
 ### Added
 
 - Add options and hot-reloading.
@@ -29,5 +31,6 @@ and this project adheres to [Semantic Versioning].
 [Keep a Changelog]: https://keepachangelog.com/
 [Semantic Versioning]: https://semver.org/
 
-[Unreleased]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v0.0.0...v1.0.0
