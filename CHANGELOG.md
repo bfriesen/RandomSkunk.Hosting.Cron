@@ -1,3 +1,4 @@
+
 # RandomSkunk.Hosting.Cron
 
 All notable changes to this project will be documented in this file.
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning].
 
 - Improvements to logging.
 - Update Cronos package to latest version.
+- Improve the accuracy of delay between scheduled jobs.
 
 ## [1.0.0] - 2023-12-11
 

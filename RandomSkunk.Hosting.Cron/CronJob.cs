@@ -30,8 +30,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private CancellationTokenSource? _stoppingCts;
 
     /// <summary>
-    /// Triggered when reloading the cron job's settings. Linked to <see cref="_stoppingCts"/> and the <see cref="StartAsync"/>
-    /// method's cancellation token.
+    /// Triggered when reloading the cron job's settings. Linked to <see cref="_stoppingCts"/> (triggered when stopping the
+    /// service) and the <see cref="StartAsync"/> method's cancellation token.
     /// </summary>
     private CancellationTokenSource? _reloadingCts;
 
@@ -205,17 +205,40 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         _logger?.LogDebug(-159904559, "Cron job '{CronJobName}' is scheduled to run next at {NextOccurrence:G}.", _cronJobOptionsName, nextOccurrence);
 
-        var delay = (int)(nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds;
-
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
         if (_reloadingCts!.Token.IsCancellationRequested)
             return;
 
-        if (delay >= 1)
+        // In order to increase overall the accuracy of the delay, perform the bulk of the waiting one second at a time.
+        while ((nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds > 1000)
         {
-            // Ensure that we only call Task.Delay with a positive number, otherwise it returns a completed task and the await
-            // will not yield back to the caller. If this happens enough times and DoWork is implemented synchronously, then the
-            // service will eventually throw an unrecoverable stack overflow exception.
+            if (_logger?.IsEnabled(LogLevel.Trace) is true)
+                _logger.LogTrace(-1922763774, "Cron job '{CronJobName}' delaying one second...", _cronJobOptionsName);
+
+            try
+            {
+                await Task.Delay(1000, _reloadingCts.Token).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException)
+            {
+                // The service is stopping or the start process was aborted; return immediately.
+                return;
+            }
+        }
+
+        // Wait for the last fraction of a second.
+        var delay = (int)Math.Round((nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds);
+        if (delay > 0)
+        {
+            if (_logger?.IsEnabled(LogLevel.Trace) is true)
+            {
+                _logger.LogTrace(
+                    -148452585,
+                    "Cron job '{CronJobName}' delaying remaining {DelayMilliseconds} milliseconds...",
+                    _cronJobOptionsName,
+                    delay);
+            }
+
             try
             {
                 // Wait until the delay time is over or the stop or reload token triggers.
@@ -229,8 +252,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
         else
         {
-            // If there is no delay, directly yield to the caller instead. This prevents the stack overflow exception described
-            // above.
+            // If there was no delay, make sure we yield back to the caller. This prevents a potential stack overflow exception.
             await Task.Yield();
         }
 
