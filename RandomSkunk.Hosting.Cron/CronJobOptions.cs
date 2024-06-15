@@ -12,6 +12,11 @@ public class CronJobOptions
     /// Gets or sets the cron expression of the cron job. This property must be initialized to a non-empty value before the cron
     /// job starts. See the <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos
     /// documentation</a> for information about the format of cron expressions.
+    /// <para>
+    /// To use more than one cron expression for the cron job, this value should consist of a semicolon delimited list of cron
+    /// expressions, e.g. <c>"0 23 * * SUN-THU; 0 1 * * SAT-SUN"</c>. In this case, when the cron job determines its next
+    /// occurence time, each cron expression is evaluated for its next occurence time and one closest to "now" is selected.
+    /// </para>
     /// </summary>
     [DisallowNull]
     public string? CronExpression { get; set; }

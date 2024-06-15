@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning].
 
 ### Changed
 
+- Add support for multiple cron expressions.
 - Inprove logs by always assigning the cron job name a non-null value.
 
 ## [1.1.0] - 2024-06-14

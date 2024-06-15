@@ -21,7 +21,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private readonly IDisposable? _optionsReloadToken;
     private readonly ILogger? _logger;
 
-    private CronExpression _cronExpression;
+    private CronExpression[] _cronExpressions;
+    private string _rawExpression;
     private TimeZoneInfo _timeZone;
 
     /// <summary>
@@ -100,7 +101,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
             throw new ArgumentNullException(nameof(cronExpression));
 
         _cronJobName = GetType().Name;
-        _cronExpression = cronExpression ?? throw new ArgumentNullException(nameof(cronExpression));
+        _cronExpressions = [cronExpression];
+        _rawExpression = cronExpression.ToString();
         _timeZone = timeZone ?? TimeZoneInfo.Local;
         _logger = logger;
 
@@ -115,7 +117,14 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// </summary>
     /// <param name="cronExpression">A cron expression that represents the schedule of the service. See the
     ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos documentation</a> for
-    ///     information about the format of cron expressions.</param>
+    ///     information about the format of cron expressions.
+    ///     <para>
+    ///     To use more than one cron expression for the cron job, this value should consist of a semicolon delimited list of
+    ///     cron expressions, e.g. <c>"0 23 * * SUN-THU; 0 1 * * SAT-SUN"</c>. In this case, when the cron job determines its
+    ///     next occurence time, each cron expression is evaluated for its next occurence time and one closest to "now" is
+    ///     selected.
+    ///     </para>
+    /// </param>
     /// <param name="logger">An optional <see cref="ILogger"/>.</param>
     /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
     ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
@@ -197,14 +206,19 @@ public abstract partial class CronJob : IHostedService, IDisposable
         Debug.Assert((_stoppingCts, _reloadingCts) is (not null, not null), $"{nameof(_stoppingCts)} and {nameof(_reloadingCts)} must be initialized before calling {nameof(ExecuteNextCronJob)}.");
 
         // Do the small amount of cpu-bound housekeeping work first, before any await calls.
-        var nextOccurrence = _cronExpression.GetNextOccurrence(DateTimeOffset.Now, _timeZone);
+        var now = DateTimeOffset.Now;
+        var nextOccurrence = _cronExpressions
+            .Select(cronExpression => cronExpression.GetNextOccurrence(now, _timeZone))
+            .Where(occurrence => occurrence.HasValue)
+            .OrderBy(occurrence => occurrence)
+            .FirstOrDefault();
         if (nextOccurrence is null)
         {
             _logger?.LogWarning(
                 -1749327138,
-                "The cron expression '{CronExpression}' is unreachable and the '{Type}' cron job will never be scheduled.",
-                _cronExpression,
-                GetType());
+                "The cron expression '{CronExpression}' is unreachable and the '{CronJobName}' cron job will never be scheduled.",
+                _rawExpression,
+                _cronJobName);
 
             return;
         }
@@ -290,36 +304,51 @@ public abstract partial class CronJob : IHostedService, IDisposable
         _currentCronJobTask = ExecuteNextCronJob();
     }
 
-    [MemberNotNull(nameof(_cronExpression), nameof(_timeZone))]
+    [MemberNotNull(nameof(_cronExpressions), nameof(_rawExpression), nameof(_timeZone))]
     private bool LoadSettings(CronJobOptions options)
     {
         var settingsChanged = false;
 
-        if (string.IsNullOrEmpty(options.CronExpression))
+        if (IsNullOrWhiteSpace(options.CronExpression))
         {
-            if (_cronExpression is null)
+            if (_cronExpressions is null || _rawExpression is null)
                 throw new ArgumentException("The 'CronExpression' setting must not be null or empty.", nameof(options));
 
-            _logger?.LogWarning(1942793153, "Unable to reload the cron expression: the 'CronExpression' setting is null or empty.");
+            _logger?.LogWarning(
+                1942793153,
+                "Unable to reload the cron expression: the 'CronExpression' setting is null or empty. The current value, '{CurrentCronExpression}', remains unchanged.",
+                _rawExpression);
         }
-        else if (_cronExpression is null || options.CronExpression != _cronExpression.ToString())
+        else if (_cronExpressions is null || _rawExpression is null || options.CronExpression != _rawExpression)
         {
             try
             {
-                var previousCronExpression = _cronExpression;
+                var previousRawExpression = _rawExpression;
 
-                var cronFormat = options.CronFormat ?? GetCronFormat(options.CronExpression!);
-                _cronExpression = CronExpression.Parse(options.CronExpression, cronFormat);
+                _cronExpressions = options.CronExpression
+#if NET6_0_OR_GREATER
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+#else
+                    .Split(';')
+                    .Select(expression => expression.Trim())
+                    .Where(expression => expression != string.Empty)
+#endif
+                    .Select(expression =>
+                    {
+                        var cronFormat = options.CronFormat ?? GetCronFormat(expression);
+                        return CronExpression.Parse(expression, cronFormat);
+                    }).ToArray();
+                _rawExpression = options.CronExpression;
                 settingsChanged = true;
 
-                if (previousCronExpression is null)
-                    _logger?.LogDebug(-583760094, "Cron expression set to '{Expression}'.", _cronExpression);
+                if (previousRawExpression is null)
+                    _logger?.LogDebug(-583760094, "Cron expression set to '{Expression}'.", _rawExpression);
                 else
-                    _logger?.LogInformation(1197508750, "Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousCronExpression, _cronExpression);
+                    _logger?.LogInformation(1197508750, "Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousRawExpression, _rawExpression);
             }
             catch (Exception ex)
             {
-                if (_cronExpression is null)
+                if (_cronExpressions is null || _rawExpression is null)
                     throw new ArgumentException($"The 'CronExpression' setting contains an invalid value, '{options.CronExpression}'.", nameof(options), ex);
 
                 _logger?.LogWarning(
@@ -327,7 +356,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
                     ex,
                     "Unable to reload the cron expression: the 'CronExpression' setting contains an invalid value, '{InvalidCronExpression}'. The current value, '{CurrentCronExpression}', remains unchanged.",
                     options.CronExpression,
-                    _cronExpression);
+                    _rawExpression);
             }
         }
 
@@ -363,6 +392,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         static CronFormat GetCronFormat(string cronExpression) =>
             SpacesOrTabsRegex().Matches(cronExpression).Count == 5 ? CronFormat.IncludeSeconds : CronFormat.Standard;
+
+        // This exists to fix a compiler warning in .NET Standard 2.0 and .NET Framework 4.6.2.
+        static bool IsNullOrWhiteSpace([NotNullWhen(false)] string? value) => string.IsNullOrWhiteSpace(value);
     }
 
     private async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
