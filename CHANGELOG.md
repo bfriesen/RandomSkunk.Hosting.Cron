@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Changed
+
+- Inprove logs by always assigning the cron job name a non-null value.
+
 ## [1.1.0] - 2024-06-14
 
 ### Added

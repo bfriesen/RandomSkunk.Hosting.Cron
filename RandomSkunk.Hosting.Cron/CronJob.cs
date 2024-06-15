@@ -17,7 +17,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     [StringSyntax(StringSyntaxAttribute.Regex)]
     private const string _spacesOrTabsPattern = @"[ \t]+";
 
-    private readonly string? _cronJobOptionsName;
+    private readonly string _cronJobName;
     private readonly IDisposable? _optionsReloadToken;
     private readonly ILogger? _logger;
 
@@ -39,21 +39,24 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CronJob"/> class using the monitored <see cref="CronJobOptions"/> named
-    /// <paramref name="cronJobOptionsName"/>.
+    /// <paramref name="cronJobName"/>.
     /// </summary>
     /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the cron job's
-    ///     <see cref="CronJobOptions"/>. The options it monitors are named <paramref name="cronJobOptionsName"/>.</param>
-    /// <param name="cronJobOptionsName">The name of the <see cref="CronJobOptions"/> that <paramref name="optionsMonitor"/>
-    ///     monitors.</param>
+    ///     <see cref="CronJobOptions"/>. The options it monitors are named <paramref name="cronJobName"/>.</param>
+    /// <param name="cronJobName">The name of the <see cref="CronJobOptions"/> that <paramref name="optionsMonitor"/> monitors.
+    ///     </param>
     /// <param name="logger">An optional logger.</param>
     /// <exception cref="ArgumentNullException">If <paramref name="optionsMonitor"/> is null.</exception>
-    protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, string cronJobOptionsName, ILogger? logger = null)
+    protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, string cronJobName, ILogger? logger = null)
     {
         if (optionsMonitor is null)
             throw new ArgumentNullException(nameof(optionsMonitor));
 
-        _cronJobOptionsName = cronJobOptionsName;
-        LoadSettings(optionsMonitor.Get(_cronJobOptionsName));
+        if (string.IsNullOrEmpty(cronJobName))
+            throw new ArgumentNullException(nameof(cronJobName));
+
+        _cronJobName = cronJobName;
+        LoadSettings(optionsMonitor.Get(_cronJobName));
         _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
         _logger = logger;
     }
@@ -73,8 +76,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (optionsMonitor is null)
             throw new ArgumentNullException(nameof(optionsMonitor));
 
-        _cronJobOptionsName = GetType().Name;
-        LoadSettings(optionsMonitor.Get(_cronJobOptionsName));
+        _cronJobName = GetType().Name;
+        LoadSettings(optionsMonitor.Get(_cronJobName));
         _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
         _logger = logger;
     }
@@ -93,12 +96,15 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null.</exception>
     protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
+        if (cronExpression is null)
+            throw new ArgumentNullException(nameof(cronExpression));
+
+        _cronJobName = GetType().Name;
         _cronExpression = cronExpression ?? throw new ArgumentNullException(nameof(cronExpression));
         _timeZone = timeZone ?? TimeZoneInfo.Local;
         _logger = logger;
 
-        // Opt out of options and reloading for this constructor.
-        _cronJobOptionsName = null;
+        // Opt out of reloading for this constructor.
         _optionsReloadToken = null;
     }
 
@@ -120,11 +126,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (string.IsNullOrEmpty(cronExpression))
             throw new ArgumentNullException(nameof(cronExpression));
 
+        _cronJobName = GetType().Name;
         LoadSettings(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
         _logger = logger;
 
-        // Opt out of options and reloading for this constructor.
-        _cronJobOptionsName = null;
+        // Opt out of reloading for this constructor.
         _optionsReloadToken = null;
     }
 
@@ -203,7 +209,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             return;
         }
 
-        _logger?.LogDebug(-159904559, "Cron job '{CronJobName}' is scheduled to run next at {NextOccurrence:G}.", _cronJobOptionsName, nextOccurrence);
+        _logger?.LogDebug(-159904559, "Cron job '{CronJobName}' is scheduled to run next at {NextOccurrence:G}.", _cronJobName, nextOccurrence);
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
         if (_reloadingCts!.Token.IsCancellationRequested)
@@ -213,7 +219,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         while ((nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds > 1000)
         {
             if (_logger?.IsEnabled(LogLevel.Trace) is true)
-                _logger.LogTrace(-1922763774, "Cron job '{CronJobName}' delaying one second...", _cronJobOptionsName);
+                _logger.LogTrace(-1922763774, "Cron job '{CronJobName}' delaying one second...", _cronJobName);
 
             try
             {
@@ -235,7 +241,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 _logger.LogTrace(
                     -148452585,
                     "Cron job '{CronJobName}' delaying remaining {DelayMilliseconds} milliseconds...",
-                    _cronJobOptionsName,
+                    _cronJobName,
                     delay);
             }
 
@@ -362,7 +368,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
     {
         // Make sure we're looking at the right options.
-        if (optionsName != _cronJobOptionsName)
+        if (optionsName != _cronJobName)
             return;
 
         // Reload the settings. If nothing changed, don't restart the background task.
