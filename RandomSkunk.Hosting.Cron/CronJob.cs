@@ -39,30 +39,6 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private Task? _currentCronJobTask;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CronJob"/> class using the monitored <see cref="CronJobOptions"/> named
-    /// <paramref name="cronJobName"/>.
-    /// </summary>
-    /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the cron job's
-    ///     <see cref="CronJobOptions"/>. The options it monitors are named <paramref name="cronJobName"/>.</param>
-    /// <param name="cronJobName">The name of the <see cref="CronJobOptions"/> that <paramref name="optionsMonitor"/> monitors.
-    ///     </param>
-    /// <param name="logger">An optional logger.</param>
-    /// <exception cref="ArgumentNullException">If <paramref name="optionsMonitor"/> is null.</exception>
-    protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, string cronJobName, ILogger? logger = null)
-    {
-        if (optionsMonitor is null)
-            throw new ArgumentNullException(nameof(optionsMonitor));
-
-        if (string.IsNullOrEmpty(cronJobName))
-            throw new ArgumentNullException(nameof(cronJobName));
-
-        _cronJobName = cronJobName;
-        LoadSettings(optionsMonitor.Get(_cronJobName));
-        _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
-        _logger = logger;
-    }
-
-    /// <summary>
     /// Initializes a new instance of the <see cref="CronJob"/> class using the monitored <see cref="CronJobOptions"/> named this
     /// instance's type name.
     /// </summary>
@@ -81,33 +57,6 @@ public abstract partial class CronJob : IHostedService, IDisposable
         LoadSettings(optionsMonitor.Get(_cronJobName));
         _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
         _logger = logger;
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="CronJob"/> class with the specified <see cref="CronExpression"/>. See the
-    /// <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#usage">Cronos documentation</a> for information about
-    /// creating instances of <see cref="CronExpression"/>.
-    /// </summary>
-    /// <param name="cronExpression">A <see cref="CronExpression"/> that represents the schedule of the service. See the
-    ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#usage">Cronos documentation</a> for information
-    ///     about creating instances of <see cref="CronExpression"/>.</param>
-    /// <param name="logger">An optional <see cref="ILogger"/>.</param>
-    /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
-    ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
-    /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null.</exception>
-    protected CronJob(CronExpression cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
-    {
-        if (cronExpression is null)
-            throw new ArgumentNullException(nameof(cronExpression));
-
-        _cronJobName = GetType().Name;
-        _cronExpressions = [cronExpression];
-        _rawExpression = cronExpression.ToString();
-        _timeZone = timeZone ?? TimeZoneInfo.Local;
-        _logger = logger;
-
-        // Opt out of reloading for this constructor.
-        _optionsReloadToken = null;
     }
 
     /// <summary>
