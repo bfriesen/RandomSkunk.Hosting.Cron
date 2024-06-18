@@ -10,31 +10,6 @@ namespace Microsoft.Extensions.DependencyInjection;
 public static class ServiceCollectionCronJobExtensions
 {
     /// <summary>
-    /// Add an <see cref="IHostedService"/> registration for the given cron job type.
-    /// </summary>
-    /// <typeparam name="TCronJob">A <see cref="CronJob"/> to register.</typeparam>
-    /// <param name="services">The <see cref="IServiceCollection"/> to register with.</param>
-    /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="services"/> is <see langword="null"/>.</exception>
-    public static IServiceCollection AddCronJob<TCronJob>(this IServiceCollection services)
-        where TCronJob : CronJob =>
-        services.AddHostedService<TCronJob>();
-
-    /// <summary>
-    /// Add an <see cref="IHostedService"/> registration for the given cron job type.
-    /// </summary>
-    /// <typeparam name="TCronJob">A <see cref="CronJob"/> to register.</typeparam>
-    /// <param name="services">The <see cref="IServiceCollection"/> to register with.</param>
-    /// <param name="implementationFactory">A factory to create new instances of the cron job implementation.</param>
-    /// <returns>The original <see cref="IServiceCollection"/>.</returns>
-    /// <exception cref="ArgumentNullException">If any of the parameters are <see langword="null"/>.</exception>
-    public static IServiceCollection AddCronJob<TCronJob>(
-        this IServiceCollection services,
-        Func<IServiceProvider, TCronJob> implementationFactory)
-        where TCronJob : CronJob =>
-        services.AddHostedService(implementationFactory);
-
-    /// <summary>
     /// Add an <see cref="IHostedService"/> registration for the given cron job type. The cron job's <see cref="CronJobOptions"/>
     /// are configured by the <paramref name="configureOptions"/> function.
     /// </summary>
