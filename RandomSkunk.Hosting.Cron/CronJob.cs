@@ -38,15 +38,15 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private Task? _currentCronJobTask;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CronJob"/> class using the monitored <see cref="CronJobOptions"/> named this
-    /// instance's type name.
+    /// Initializes a new instance of the <see cref="CronJob"/> class. The name of its monitored <see cref="CronJobOptions"/> is
+    /// the <see cref="Type.FullName"/> of the <see cref="Type"/> of the new instance.
     /// </summary>
     /// <param name="optionsMonitor">The <see cref="IOptionsMonitor{TOptions}"/> that monitors the cron job's
-    ///     <see cref="CronJobOptions"/>. The options it monitors are named this instance's type name.</param>
+    ///     <see cref="CronJobOptions"/>.</param>
     /// <param name="logger">An optional logger.</param>
     /// <exception cref="ArgumentNullException">If <paramref name="optionsMonitor"/> is null.</exception>
-    /// <exception cref="ArgumentException">If the <see cref="CronJobOptions.CronExpression"/> or
-    ///     <see cref="CronJobOptions.TimeZone"/> properties are invalid.</exception>
+    /// <exception cref="InvalidOperationException">If either of the configured 'CronExpression' or 'TimeZone' settings is
+    ///     invalid.</exception>
     protected CronJob(IOptionsMonitor<CronJobOptions> optionsMonitor, ILogger? logger = null)
     {
         if (optionsMonitor is null)
@@ -76,7 +76,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
     ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
     /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null or empty.</exception>
-    /// <exception cref="ArgumentException">If <paramref name="cronExpression"/> is invalid.</exception>
+    /// <exception cref="InvalidOperationException">If <paramref name="cronExpression"/> is invalid.</exception>
     protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
     {
         if (string.IsNullOrEmpty(cronExpression))
@@ -246,7 +246,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (IsNullOrWhiteSpace(options.CronExpression))
         {
             if (_cronExpressions is null || _rawExpression is null)
-                throw new ArgumentException("The 'CronExpression' setting must not be null or empty.", nameof(options));
+                throw new InvalidOperationException("The configured 'CronExpression' setting must not be null or whitespace.");
 
             _logger?.LogWarning(
                 1942793153,
@@ -268,7 +268,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             catch (Exception ex)
             {
                 if (_cronExpressions is null || _rawExpression is null)
-                    throw new ArgumentException($"The 'CronExpression' setting contains an invalid value, '{options.CronExpression}'.", nameof(options), ex);
+                    throw new InvalidOperationException($"There was a problem with the configured 'CronExpression' setting, '{options.CronExpression}'. See the inner exception for details.", ex);
 
                 _logger?.LogWarning(
                     1884538533,
@@ -334,7 +334,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             catch (Exception ex)
             {
                 if (_timeZone is null)
-                    throw new ArgumentException($"The 'TimeZone' setting contains an invalid value, '{options.TimeZone}'.", nameof(options), ex);
+                    throw new InvalidOperationException($"The 'TimeZone' setting contains an invalid value, '{options.TimeZone}'.", ex);
 
                 _logger?.LogWarning(
                     -1218376460,
