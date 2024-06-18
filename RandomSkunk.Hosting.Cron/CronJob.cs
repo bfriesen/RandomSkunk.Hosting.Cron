@@ -238,10 +238,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
     }
 
     [MemberNotNull(nameof(_cronExpressions), nameof(_rawExpression), nameof(_timeZone))]
-    private bool LoadSettings(CronJobOptions options)
-    {
-        var settingsChanged = false;
+    private bool LoadSettings(CronJobOptions options) => LoadCronExpression(options) | LoadTimeZone(options);
 
+    [MemberNotNull(nameof(_cronExpressions), nameof(_rawExpression))]
+    private bool LoadCronExpression(CronJobOptions options)
+    {
         if (IsNullOrWhiteSpace(options.CronExpression))
         {
             if (_cronExpressions is null || _rawExpression is null)
@@ -254,27 +255,15 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
         else if (_cronExpressions is null || _rawExpression is null || options.CronExpression != _rawExpression)
         {
+            CronExpression[]? cronExpressions;
+
             try
             {
-                var previousRawExpression = _rawExpression;
-
-                _cronExpressions = options.CronExpression
-#if NET6_0_OR_GREATER
-                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-#else
-                    .Split(';')
+                cronExpressions = options.CronExpression.Split(';')
                     .Select(expression => expression.Trim())
                     .Where(expression => expression != string.Empty)
-#endif
                     .Select(expression => CronExpression.Parse(expression, GetCronFormat(expression)))
                     .ToArray();
-                _rawExpression = options.CronExpression;
-                settingsChanged = true;
-
-                if (previousRawExpression is null)
-                    _logger?.LogDebug(-583760094, "Cron expression set to '{Expression}'.", _rawExpression);
-                else
-                    _logger?.LogInformation(1197508750, "Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousRawExpression, _rawExpression);
             }
             catch (Exception ex)
             {
@@ -284,12 +273,49 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 _logger?.LogWarning(
                     1884538533,
                     ex,
-                    "Unable to reload the cron expression: the 'CronExpression' setting contains an invalid value, '{InvalidCronExpression}'. The current value, '{CurrentCronExpression}', remains unchanged.",
+                    "There was a problem with the new 'CronExpression' setting, '{InvalidCronExpression}'. The current value, '{CurrentCronExpression}', remains unchanged.",
                     options.CronExpression,
                     _rawExpression);
+
+                return false;
             }
+
+            if (cronExpressions.Length > 0)
+            {
+                var previousRawExpression = _rawExpression;
+                _cronExpressions = cronExpressions;
+                _rawExpression = options.CronExpression;
+
+                if (previousRawExpression is null)
+                    _logger?.LogDebug(-583760094, "Cron expression set to '{Expression}'.", _rawExpression);
+                else
+                    _logger?.LogInformation(1197508750, "Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousRawExpression, _rawExpression);
+
+                return true;
+            }
+
+            if (_cronExpressions is null || _rawExpression is null)
+                throw new InvalidOperationException("The configured 'CronExpression' setting does not actually contain any cron expressions.");
+
+            _logger?.LogWarning(
+                785492755,
+                "Unable to reload the cron expression: the 'CronExpression' setting does not actually contain any cron expressions. The current value, '{CurrentCronExpression}', remains unchanged.",
+                _rawExpression);
         }
 
+        return false;
+
+        static CronFormat GetCronFormat(string cronExpression) =>
+            SpacesOrTabsRegex().Matches(cronExpression).Count >= 5 ? CronFormat.IncludeSeconds : CronFormat.Standard;
+
+        // This exists to fix a compiler warning in .NET Standard 2.0 and .NET Framework 4.6.2.
+        static bool IsNullOrWhiteSpace([NotNullWhen(false)] string? value) =>
+            string.IsNullOrWhiteSpace(value);
+    }
+
+    [MemberNotNull(nameof(_timeZone))]
+    private bool LoadTimeZone(CronJobOptions options)
+    {
         if (_timeZone is null || options.HasDifferentTimeZoneThan(_timeZone))
         {
             try
@@ -297,12 +323,13 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 var previousTimeZone = _timeZone;
 
                 _timeZone = options.GetTimeZone();
-                settingsChanged = true;
 
                 if (previousTimeZone is null)
                     _logger?.LogDebug(-679945320, "Cron time zone set to '{TimeZone}'.", _timeZone.Id);
                 else
                     _logger?.LogInformation(827525297, "Cron time zone changed from '{PreviousTimeZone}' to '{NewTimeZone}'.", previousTimeZone.Id, _timeZone.Id);
+
+                return true;
             }
             catch (Exception ex)
             {
@@ -318,13 +345,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             }
         }
 
-        return settingsChanged;
-
-        static CronFormat GetCronFormat(string cronExpression) =>
-            SpacesOrTabsRegex().Matches(cronExpression).Count == 5 ? CronFormat.IncludeSeconds : CronFormat.Standard;
-
-        // This exists to fix a compiler warning in .NET Standard 2.0 and .NET Framework 4.6.2.
-        static bool IsNullOrWhiteSpace([NotNullWhen(false)] string? value) => string.IsNullOrWhiteSpace(value);
+        return false;
     }
 
     private async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
