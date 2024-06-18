@@ -8,101 +8,101 @@ RandomSkunk.Hosting.Cron provides a `IHostedService` base class that schedules w
 
 ## Usage
 
-To implement a cron job, inherit from the `CronJob` abstract class:
+To implement a cron job that loads its settings from configuration, inherit from the `CronJob` abstract class and create a constructor with an `IOptionsMonitor<CronJobOptions>` parameter. Pass this through to the base constructor.
+
+*Note that a cron job created with options will automatically reload itself when the option's configuration reloads.*
 
 ```c#
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using RandomSkunk.Hosting.Cron;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace MyNamespace;
 
 public class MyCronJob : CronJob
 {
-    public MyCronJob()
-        : base("*/30 * * * * *") // Run every 30 seconds.
-    {
-    }
+    private readonly ILogger<MyCronJob> _logger;
 
-    protected override async Task DoWork(CancellationToken stoppingToken)
-    {
-        Console.WriteLine("Starting cron job at: {DateTimeOffset.Now:G}");
-
-        // Simulate work.
-        await Task.Delay(Random.Shared.Next(250, 1000), stoppingToken);
-
-        Console.WriteLine("Cron job finished at: {DateTimeOffset.Now:G}");
-    }
-}
-```
-
-Add the cron job to an application like any other hosted service:
-
-```c#
-services.AddHostedService<MyCronJob>();
-```
-
----
-
-The next example shows a more involved cron job, which is initialized with configuration and has logging.
-
-```c#
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using RandomSkunk.Hosting.Cron;
-
-public class AnotherCronJob : CronJob
-{
-    private const string _cronExpressionSettingName = "AnotherCronJob.CronExpression";
-
-    private readonly ILogger<AnotherCronJob> _logger;
-
-    public AnotherCronJob(IConfiguration configuration, ILogger<AnotherCronJob> logger)
-        : base(GetCronExpression(configuration), logger)
+    public MyCronJob(
+        IOptionsMonitor<CronJobOptions> optionsMonitor,
+        ILogger<MyCronJob> logger)
+        : base(optionsMonitor, logger)
     {
         _logger = logger;
     }
 
-    public override Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task DoWork(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Cron job starting at: {time:G}", DateTimeOffset.Now);
-        return base.StartAsync(cancellationToken);
-    }
-
-    public override Task StopAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Cron job stopping at: {time:G}", DateTimeOffset.Now);
-        return base.StopAsync(cancellationToken);
-    }
-
-    public override void Dispose()
-    {
-        _logger.LogInformation("Disposing cron job at: {time:G}", DateTimeOffset.Now);
-        base.Dispose();
-    }
-
-    protected override async Task DoWork(CancellationToken stoppingToken)
-    {
-        _logger.LogInformation("Cron job work starting at: {time:G}", DateTimeOffset.Now);
+        _logger.LogDebug("Cron job work starting at: {time:G}", DateTimeOffset.Now);
 
         // Simulate work.
-        await Task.Delay(Random.Shared.Next(250, 1000), stoppingToken);
+        await Task.Delay(Random.Shared.Next(250, 1000), cancellationToken);
 
         _logger.LogInformation("Cron job work finished at: {time:G}", DateTimeOffset.Now);
-    }
-
-    private static string GetCronExpression(IConfiguration configuration)
-    {
-        ArgumentNullException.ThrowIfNull(configuration);
-
-        return configuration[_cronExpressionSettingName]
-            ?? throw new ArgumentException($"Must contain a value for '{_cronExpressionSettingName}' setting.", nameof(configuration));
     }
 }
 ```
 
-An application running this cron job would need to have a configuration that looked something like this (this example is configured to run nightly at 2 am):
+Add a configuration section for the cron job. The section must have a 'CronExpression' setting.
 
 ```json
 {
-  "AnotherCronJob": {
-    "CronExpression": "0 2 * * *"
+  "MyCronJob": {
+    "CronExpression": "0 1 * * MON", // Scheduled for 1 AM EST every Monday.
+    "TimeZone": "Eastern Standard Time" // Other values are "Local" and "UTC".
   }
 }
+```
+
+Add the cron job the an application with the `AddCronJob` extension method. Pass it the configuration section that defines the
+cron job.
+
+```c#
+services.AddCronJob<MyCronJob>(services.GetSection("MyCronJob"));
+```
+
+That's it. When you run your application, the cron job will fire every Monday at 1 AM.
+
+---
+
+The next example show a cron job that loads its settings directly from constructor parameters.
+
+```c#
+using Microsoft.Extensions.Logging;
+using RandomSkunk.Hosting.Cron;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
+
+namespace MyNamespace;
+
+public class AnotherCronJob : CronJob
+{
+    private readonly ILogger<AnotherCronJob> _logger;
+
+    public AnotherCronJob(ILogger<AnotherCronJob> logger) // Scheduled for 8 AM PST Monday through Friday.
+        : base("0 8 * * MON-FRI", logger, TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time"))
+    {
+        _logger = logger;
+    }
+
+    protected override async Task DoWork(CancellationToken stoppingToken)
+    {
+        _logger.LogDebug("Starting cron job at: {StartTime:G}", DateTime.Now);
+
+        // Simulate work.
+        await Task.Delay(Random.Shared.Next(250, 1000), stoppingToken);
+
+        _logger.LogInformation("Cron job finished at: {EndTime:G}", DateTime.Now);
+    }
+}
+```
+
+To add this cron job to an application, use the regular `AddHostedService` extension method.
+
+```c#
+builder.Services.AddHostedService<AnotherCronJob>();
 ```
