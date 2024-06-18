@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning].
 ### Changed
 
 - Add support for multiple cron expressions.
-- Inprove logs by always assigning the cron job name a non-null value.
+- Always use the full name of the concrete implementation type as the name of the options (the `cronJobOptionsName` and `cronJobName` parameters no longer exist).
 
 ### Removed
 
-- Remove confusing overloads of the `AddCronJob` extension method.
+- Simplify and reduce the number of `CronJob` constructors and `AddCronJob` extension method overloads.
 - Remove `CronJobOptions.CronFormat` setting.
 
 ## [1.1.0] - 2024-06-14
