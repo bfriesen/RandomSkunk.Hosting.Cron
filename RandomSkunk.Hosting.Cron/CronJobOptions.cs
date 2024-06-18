@@ -22,12 +22,6 @@ public class CronJobOptions
     public string? CronExpression { get; set; }
 
     /// <summary>
-    /// Gets or sets the <see cref="Cronos.CronFormat"/> of the cron job. When null, the cron job will infer the format from the
-    /// value of the <see cref="CronExpression"/> property.
-    /// </summary>
-    public CronFormat? CronFormat { get; set; }
-
-    /// <summary>
     /// Gets or sets the time zone of the cron job. When setting this property, valid values are null, "UTC", "Local", or the ID
     /// of a system time zone.
     /// </summary>

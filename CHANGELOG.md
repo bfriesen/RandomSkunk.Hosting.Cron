@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning].
 ### Removed
 
 - Remove confusing overloads of the `AddCronJob` extension method.
+- Remove `CronJobOptions.CronFormat` setting.
 
 ## [1.1.0] - 2024-06-14
 

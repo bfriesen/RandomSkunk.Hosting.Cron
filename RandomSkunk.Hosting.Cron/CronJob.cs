@@ -333,11 +333,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
                     .Select(expression => expression.Trim())
                     .Where(expression => expression != string.Empty)
 #endif
-                    .Select(expression =>
-                    {
-                        var cronFormat = options.CronFormat ?? GetCronFormat(expression);
-                        return CronExpression.Parse(expression, cronFormat);
-                    }).ToArray();
+                    .Select(expression => CronExpression.Parse(expression, GetCronFormat(expression)))
+                    .ToArray();
                 _rawExpression = options.CronExpression;
                 settingsChanged = true;
 
