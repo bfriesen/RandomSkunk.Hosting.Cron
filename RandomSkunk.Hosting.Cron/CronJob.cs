@@ -17,7 +17,6 @@ public abstract partial class CronJob : IHostedService, IDisposable
     [StringSyntax(StringSyntaxAttribute.Regex)]
     private const string _spacesOrTabsPattern = @"[ \t]+";
 
-    private readonly string _cronJobName;
     private readonly IDisposable? _optionsReloadToken;
     private readonly ILogger? _logger;
 
@@ -53,8 +52,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (optionsMonitor is null)
             throw new ArgumentNullException(nameof(optionsMonitor));
 
-        _cronJobName = GetType().Name;
-        LoadSettings(optionsMonitor.Get(_cronJobName));
+        LoadSettings(optionsMonitor.Get(GetType().GetFullName()));
         _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
         _logger = logger;
     }
@@ -84,7 +82,6 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (string.IsNullOrEmpty(cronExpression))
             throw new ArgumentNullException(nameof(cronExpression));
 
-        _cronJobName = GetType().Name;
         LoadSettings(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
         _logger = logger;
 
@@ -165,14 +162,13 @@ public abstract partial class CronJob : IHostedService, IDisposable
         {
             _logger?.LogWarning(
                 -1749327138,
-                "The cron expression '{CronExpression}' is unreachable and the '{CronJobName}' cron job will never be scheduled.",
-                _rawExpression,
-                _cronJobName);
+                "The cron expression '{CronExpression}' is unreachable and the cron job will never be scheduled.",
+                _rawExpression);
 
             return;
         }
 
-        _logger?.LogDebug(-159904559, "Cron job '{CronJobName}' is scheduled to run next at {NextOccurrence:G}.", _cronJobName, nextOccurrence);
+        _logger?.LogDebug(-159904559, "The cron job is scheduled to run next at {NextOccurrence:G}.", nextOccurrence);
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
         if (_reloadingCts!.Token.IsCancellationRequested)
@@ -181,8 +177,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         // In order to increase overall the accuracy of the delay, perform the bulk of the waiting one second at a time.
         while ((nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds > 1000)
         {
-            if (_logger?.IsEnabled(LogLevel.Trace) is true)
-                _logger.LogTrace(-1922763774, "Cron job '{CronJobName}' delaying one second...", _cronJobName);
+            _logger?.LogTrace(-1922763774, "Delaying one second...");
 
             try
             {
@@ -199,14 +194,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         var delay = (int)Math.Round((nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds);
         if (delay > 0)
         {
-            if (_logger?.IsEnabled(LogLevel.Trace) is true)
-            {
-                _logger.LogTrace(
-                    -148452585,
-                    "Cron job '{CronJobName}' delaying remaining {DelayMilliseconds} milliseconds...",
-                    _cronJobName,
-                    delay);
-            }
+            _logger?.LogTrace(-148452585, "Delaying remaining {DelayMilliseconds} milliseconds...", delay);
 
             try
             {
@@ -238,11 +226,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         catch (Exception ex)
         {
             // Log the exception if a logger was provided.
-            _logger?.LogError(
-                -631620540,
-                ex,
-                "An exception was thrown while running the scheduled '{Type}' cron job.",
-                GetType());
+            _logger?.LogError(-631620540, ex, "An exception was thrown while running the scheduled cron job.");
         }
 
         // Last chance to gracefully handle cancellation before making the recursive call.
@@ -346,7 +330,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
     {
         // Make sure we're looking at the right options.
-        if (optionsName != _cronJobName)
+        if (optionsName != GetType().GetFullName())
             return;
 
         // Reload the settings. If nothing changed, don't restart the background task.
