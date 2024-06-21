@@ -2,7 +2,7 @@
      See: https://www.strathweb.com/2018/07/solution-wide-nuget-package-version-handling-with-msbuild-15/ -->
 <Project>
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
-		<PackageVersion>1.1.0</PackageVersion>
+		<PackageVersion>2.0.0</PackageVersion>
 		<PackageReleaseNotes>https://github.com/bfriesen/RandomSkunk.Hosting.Cron/blob/main/CHANGELOG.md#$(PackageVersion.Replace(".", ""))---$([System.DateTime]::Now.ToString("yyyy-MM-dd"))</PackageReleaseNotes>
     </PropertyGroup>
 	
