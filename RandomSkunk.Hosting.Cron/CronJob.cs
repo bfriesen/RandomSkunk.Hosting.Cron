@@ -123,6 +123,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <inheritdoc/>
     public virtual Task StartAsync(CancellationToken cancellationToken)
     {
+        _logger.LogDebug(843635087, "Starting cron job service...");
+
         // Link the stopping token to the provided token.
         _stoppingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -132,12 +134,19 @@ public abstract partial class CronJob : IHostedService, IDisposable
         // Start and store (but don't await) the next cron job task.
         _currentCronJobTask = ExecuteNextCronJob();
 
-        // If the task is completed then return it, this will bubble cancellation and failure to the caller.
-        if (_currentCronJobTask.IsCompleted)
-            return _currentCronJobTask;
+        try
+        {
+            // If the task is completed then return it, this will bubble cancellation and failure to the caller.
+            if (_currentCronJobTask.IsCompleted)
+                return _currentCronJobTask;
 
-        // Otherwise it's running.
-        return Task.CompletedTask;
+            // Otherwise it's running.
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            _logger.LogInformation(843635087, "Cron job service started.");
+        }
     }
 
     /// <inheritdoc/>
@@ -149,6 +158,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         try
         {
+            _logger.LogDebug(2034495701, "Stopping cron job service...");
+
             // Signal "stopping" cancellation to the currently running ExecuteNextCronJob method.
             _stoppingCts.Cancel();
         }
@@ -156,6 +167,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         {
             // Wait until the current cron job task completes or the StopAsync cancellation token triggers.
             await Task.WhenAny(_currentCronJobTask, Task.Delay(Timeout.Infinite, cancellationToken)).ConfigureAwait(false);
+            _logger.LogInformation(369419253, "Cron job service stopped.");
         }
     }
 
