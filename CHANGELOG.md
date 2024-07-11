@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning].
 ### Changed
 
 - Wait more efficiently for the next job.
+- Use high-performance logging when executing jobs.
 
 ## [2.0.0] - 2024-06-21
 

@@ -18,7 +18,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     private const string _spacesOrTabsPattern = @"[ \t]+";
 
     private readonly IDisposable? _optionsReloadToken;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
     private CronExpression[] _cronExpressions;
     private string _rawExpression;
@@ -52,9 +52,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (optionsMonitor is null)
             throw new ArgumentNullException(nameof(optionsMonitor));
 
+        _logger = logger ?? new NullLogger();
         LoadSettings(optionsMonitor.Get(GetType().GetFullName()));
         _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
-        _logger = logger;
 
         async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
         {
@@ -70,10 +70,10 @@ public abstract partial class CronJob : IHostedService, IDisposable
             if (!IsStarted)
                 return;
 
-            // Signal reloading cancellation to the executing method.
+            // Signal "reloading" cancellation to the currently running ExecuteNextCronJob method.
             _reloadingCts.Cancel();
 
-            // Wait until the task completes.
+            // Wait until the current cron job task completes.
             await _currentCronJobTask.ConfigureAwait(false);
 
             // Recreate the reloading token.
@@ -110,8 +110,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (string.IsNullOrEmpty(cronExpression))
             throw new ArgumentNullException(nameof(cronExpression));
 
+        _logger = logger ?? new NullLogger();
         LoadSettings(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
-        _logger = logger;
 
         // Opt out of reloading for this constructor.
         _optionsReloadToken = null;
@@ -149,12 +149,12 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         try
         {
-            // Signal stopping cancellation to the executing method.
+            // Signal "stopping" cancellation to the currently running ExecuteNextCronJob method.
             _stoppingCts.Cancel();
         }
         finally
         {
-            // Wait until the task completes or the stop token triggers.
+            // Wait until the current cron job task completes or the StopAsync cancellation token triggers.
             await Task.WhenAny(_currentCronJobTask, Task.Delay(Timeout.Infinite, cancellationToken)).ConfigureAwait(false);
         }
     }
@@ -189,15 +189,11 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         if (nextOccurrence is null)
         {
-            _logger?.LogWarning(
-                -1749327138,
-                "The cron expression '{CronExpression}' is unreachable and the cron job will never be scheduled.",
-                _rawExpression);
-
+            LogCronJobWillNeverBeScheduled(_rawExpression);
             return;
         }
 
-        _logger?.LogDebug(-159904559, "The cron job is scheduled to run next at {NextOccurrence:G}.", nextOccurrence);
+        LogCronJobIsScheduledToRunNextAt(nextOccurrence.Value);
 
         // Last chance to gracefully handle cancellation before the end of the synchronous section.
         if (_reloadingCts!.Token.IsCancellationRequested)
@@ -226,7 +222,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         catch (Exception ex)
         {
             // Log the exception if a logger was provided.
-            _logger?.LogError(-631620540, ex, "An exception was thrown while running the scheduled cron job.");
+            LogExceptionThrownWhileRunningScheduledCronJob(ex);
         }
 
         // Last chance to gracefully handle cancellation before making the recursive call.
@@ -243,28 +239,28 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
             while ((nextOccurrence - DateTimeOffset.Now).TotalDays > timeThreshold)
             {
-                _logger?.LogTrace(-1453642911, "Delaying one day while waiting for {NextOccurance:G}...", nextOccurrence);
+                LogDelayingOneDay(nextOccurrence);
                 await Task.Delay(TimeSpan.FromDays(1), cancellationToken).ConfigureAwait(false);
                 delayed = true;
             }
 
             while ((nextOccurrence - DateTimeOffset.Now).TotalHours > timeThreshold)
             {
-                _logger?.LogTrace(-1415680235, "Delaying one hour while waiting for {NextOccurance:G}...", nextOccurrence);
+                LogDelayingOneHour(nextOccurrence);
                 await Task.Delay(TimeSpan.FromHours(1), cancellationToken).ConfigureAwait(false);
                 delayed = true;
             }
 
             while ((nextOccurrence - DateTimeOffset.Now).TotalMinutes > timeThreshold)
             {
-                _logger?.LogTrace(220579656, "Delaying one minute while waiting for {NextOccurance:G}...", nextOccurrence);
+                LogDelayingOneMinute(nextOccurrence);
                 await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken).ConfigureAwait(false);
                 delayed = true;
             }
 
             while ((nextOccurrence - DateTimeOffset.Now).TotalSeconds > timeThreshold)
             {
-                _logger?.LogTrace(-274608716, "Delaying one second while waiting for {NextOccurance:G}...", nextOccurrence);
+                LogDelayingOneSecond(nextOccurrence);
                 await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
                 delayed = true;
             }
@@ -272,7 +268,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             var delayMilliseconds = (int)Math.Round((nextOccurrence - DateTimeOffset.Now).TotalMilliseconds);
             if (delayMilliseconds > 0)
             {
-                _logger?.LogTrace(-148452585, "Delaying {DelayMilliseconds} milliseconds while waiting for {NextOccurance:G}...", delayMilliseconds, nextOccurrence);
+                LogDelayingFinalMilliseconds(delayMilliseconds, nextOccurrence);
                 await Task.Delay(delayMilliseconds, cancellationToken).ConfigureAwait(false);
                 delayed = true;
             }
@@ -296,7 +292,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             if (_cronExpressions is null || _rawExpression is null)
                 throw new InvalidOperationException("The configured 'CronExpression' setting must not be null or whitespace.");
 
-            _logger?.LogWarning(
+            _logger.LogWarning(
                 1942793153,
                 "Unable to reload the cron expression: the 'CronExpression' setting is null or empty. The current value, '{CurrentCronExpression}', remains unchanged.",
                 _rawExpression);
@@ -318,7 +314,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 if (_cronExpressions is null || _rawExpression is null)
                     throw new InvalidOperationException($"There was a problem with the configured 'CronExpression' setting, '{options.CronExpression}'. See the inner exception for details.", ex);
 
-                _logger?.LogWarning(
+                _logger.LogWarning(
                     1884538533,
                     ex,
                     "There was a problem with the new 'CronExpression' setting, '{InvalidCronExpression}'. The current value, '{CurrentCronExpression}', remains unchanged.",
@@ -335,9 +331,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 _rawExpression = options.CronExpression;
 
                 if (previousRawExpression is null)
-                    _logger?.LogDebug(-583760094, "Cron expression set to '{Expression}'.", _rawExpression);
+                    _logger.LogDebug(583760094, "Cron expression set to '{Expression}'.", _rawExpression);
                 else
-                    _logger?.LogInformation(1197508750, "Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousRawExpression, _rawExpression);
+                    _logger.LogInformation(1197508750, "Cron expression changed from '{PreviousExpression}' to '{NewExpression}'.", previousRawExpression, _rawExpression);
 
                 return true;
             }
@@ -345,7 +341,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             if (_cronExpressions is null || _rawExpression is null)
                 throw new InvalidOperationException("The configured 'CronExpression' setting does not actually contain any cron expressions.");
 
-            _logger?.LogWarning(
+            _logger.LogWarning(
                 785492755,
                 "Unable to reload the cron expression: the 'CronExpression' setting does not actually contain any cron expressions. The current value, '{CurrentCronExpression}', remains unchanged.",
                 _rawExpression);
@@ -373,9 +369,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 _timeZone = options.GetTimeZone();
 
                 if (previousTimeZone is null)
-                    _logger?.LogDebug(-679945320, "Cron time zone set to '{TimeZone}'.", _timeZone.Id);
+                    _logger.LogDebug(679945320, "Cron time zone set to '{TimeZone}'.", _timeZone.Id);
                 else
-                    _logger?.LogInformation(827525297, "Cron time zone changed from '{PreviousTimeZone}' to '{NewTimeZone}'.", previousTimeZone.Id, _timeZone.Id);
+                    _logger.LogInformation(827525297, "Cron time zone changed from '{PreviousTimeZone}' to '{NewTimeZone}'.", previousTimeZone.Id, _timeZone.Id);
 
                 return true;
             }
@@ -384,8 +380,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
                 if (_timeZone is null)
                     throw new InvalidOperationException($"The 'TimeZone' setting contains an invalid value, '{options.TimeZone}'.", ex);
 
-                _logger?.LogWarning(
-                    -1218376460,
+                _logger.LogWarning(
+                    1218376460,
                     ex,
                     "Unable to reload the cron time zone: the 'TimeZone' setting contains an invalid value, '{InvalidTimeZone}'. The current value, '{CurrentTimeZone}', remains unchanged.",
                     options.TimeZone,
@@ -395,6 +391,30 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         return false;
     }
+
+    [LoggerMessage(LogLevel.Debug, "The cron job is scheduled to run next at {NextOccurrence:G}.")]
+    private partial void LogCronJobIsScheduledToRunNextAt(DateTimeOffset nextOccurrence);
+
+    [LoggerMessage(LogLevel.Warning, "The cron expression '{CronExpression}' is unreachable and the cron job will never be scheduled.")]
+    private partial void LogCronJobWillNeverBeScheduled(string cronExpression);
+
+    [LoggerMessage(LogLevel.Trace, "Delaying one day while waiting for the next job at {NextOccurrence:G}.")]
+    private partial void LogDelayingOneDay(DateTimeOffset nextOccurrence);
+
+    [LoggerMessage(LogLevel.Trace, "Delaying one hour while waiting for the next job at {NextOccurrence:G}.")]
+    private partial void LogDelayingOneHour(DateTimeOffset nextOccurrence);
+
+    [LoggerMessage(LogLevel.Trace, "Delaying one minute while waiting for the next job at {NextOccurrence:G}.")]
+    private partial void LogDelayingOneMinute(DateTimeOffset nextOccurrence);
+
+    [LoggerMessage(LogLevel.Trace, "Delaying one second while waiting for the next job at {NextOccurrence:G}.")]
+    private partial void LogDelayingOneSecond(DateTimeOffset nextOccurrence);
+
+    [LoggerMessage(LogLevel.Trace, "Delaying final {DelayMilliseconds} milliseconds while waiting for the next job at {NextOccurrence:G}.")]
+    private partial void LogDelayingFinalMilliseconds(int delayMilliseconds, DateTimeOffset nextOccurrence);
+
+    [LoggerMessage(LogLevel.Error, "An exception was thrown while running the scheduled cron job.")]
+    private partial void LogExceptionThrownWhileRunningScheduledCronJob(Exception exception);
 
 #pragma warning disable SA1204 // Static elements should appear before instance elements
 #if NET7_0_OR_GREATER
@@ -409,4 +429,15 @@ public abstract partial class CronJob : IHostedService, IDisposable
     }
 #endif
 #pragma warning restore SA1204 // Static elements should appear before instance elements
+
+    private sealed class NullLogger : ILogger
+    {
+        IDisposable? ILogger.BeginScope<TState>(TState state) => null;
+
+        bool ILogger.IsEnabled(LogLevel logLevel) => false;
+
+        void ILogger.Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+        }
+    }
 }
