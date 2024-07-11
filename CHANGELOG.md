@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [2.0.1] - 2024-07-11
+
 ### Changed
 
 - Wait more efficiently for the next job.
-- Use high-performance logging when executing jobs.
+- Use [high-performance logging](https://learn.microsoft.com/en-us/dotnet/core/extensions/high-performance-logging) when executing jobs.
 
 ## [2.0.0] - 2024-06-21
 
@@ -48,7 +50,8 @@ and this project adheres to [Semantic Versioning].
 [Keep a Changelog]: https://keepachangelog.com/
 [Semantic Versioning]: https://semver.org/
 
-[Unreleased]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/bfriesen/RandomSkunk.Hosting.Cron/compare/v0.0.0...v1.0.0
