@@ -55,6 +55,34 @@ public abstract partial class CronJob : IHostedService, IDisposable
         LoadSettings(optionsMonitor.Get(GetType().GetFullName()));
         _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
         _logger = logger;
+
+        async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
+        {
+            // Make sure we're looking at the right options.
+            if (optionsName != GetType().GetFullName())
+                return;
+
+            // Reload the settings. If nothing changed, don't restart the background task.
+            if (!LoadSettings(options))
+                return;
+
+            // If the options change before the service starts, don't restart the background task.
+            if (!IsStarted)
+                return;
+
+            // Signal reloading cancellation to the executing method.
+            _reloadingCts.Cancel();
+
+            // Wait until the task completes.
+            await _currentCronJobTask.ConfigureAwait(false);
+
+            // Recreate the reloading token.
+            _reloadingCts.Dispose();
+            _reloadingCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token);
+
+            // Start and store (but don't await) the next cron job task.
+            _currentCronJobTask = ExecuteNextCronJob();
+        }
     }
 
     /// <summary>
@@ -115,7 +143,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <inheritdoc/>
     public virtual async Task StopAsync(CancellationToken cancellationToken)
     {
-        // Stop called without start.
+        // Nothing to do if we're not running.
         if (!IsStarted)
             return;
 
@@ -158,6 +186,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
             .Where(occurrence => occurrence.HasValue)
             .OrderBy(occurrence => occurrence)
             .FirstOrDefault();
+
         if (nextOccurrence is null)
         {
             _logger?.LogWarning(
@@ -174,43 +203,14 @@ public abstract partial class CronJob : IHostedService, IDisposable
         if (_reloadingCts!.Token.IsCancellationRequested)
             return;
 
-        // In order to increase overall the accuracy of the delay, perform the bulk of the waiting one second at a time.
-        while ((nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds > 1000)
+        try
         {
-            _logger?.LogTrace(-1922763774, "Delaying one second...");
-
-            try
-            {
-                await Task.Delay(1000, _reloadingCts.Token).ConfigureAwait(false);
-            }
-            catch (TaskCanceledException)
-            {
-                // The service is stopping or the start process was aborted; return immediately.
-                return;
-            }
+            await WaitForNextOccurrence(nextOccurrence.Value, _reloadingCts.Token).ConfigureAwait(false);
         }
-
-        // Wait for the last fraction of a second.
-        var delay = (int)Math.Round((nextOccurrence.Value - DateTimeOffset.Now).TotalMilliseconds);
-        if (delay > 0)
+        catch (TaskCanceledException)
         {
-            _logger?.LogTrace(-148452585, "Delaying remaining {DelayMilliseconds} milliseconds...", delay);
-
-            try
-            {
-                // Wait until the delay time is over or the stop or reload token triggers.
-                await Task.Delay(delay, _reloadingCts.Token).ConfigureAwait(false);
-            }
-            catch (TaskCanceledException)
-            {
-                // The service is stopping or the start process was aborted; return immediately.
-                return;
-            }
-        }
-        else
-        {
-            // If there was no delay, make sure we yield back to the caller. This prevents a potential stack overflow exception.
-            await Task.Yield();
+            // The service is stopping or the start process was aborted; return immediately.
+            return;
         }
 
         try
@@ -235,6 +235,54 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
         // Start and store (but don't await) the next cron job task.
         _currentCronJobTask = ExecuteNextCronJob();
+
+        async Task WaitForNextOccurrence(DateTimeOffset nextOccurrence, CancellationToken cancellationToken)
+        {
+            const double timeThreshold = 1.2;
+            var delayed = false;
+
+            while ((nextOccurrence - DateTimeOffset.Now).TotalDays > timeThreshold)
+            {
+                _logger?.LogTrace(-1453642911, "Delaying one day while waiting for {NextOccurance:G}...", nextOccurrence);
+                await Task.Delay(TimeSpan.FromDays(1), cancellationToken).ConfigureAwait(false);
+                delayed = true;
+            }
+
+            while ((nextOccurrence - DateTimeOffset.Now).TotalHours > timeThreshold)
+            {
+                _logger?.LogTrace(-1415680235, "Delaying one hour while waiting for {NextOccurance:G}...", nextOccurrence);
+                await Task.Delay(TimeSpan.FromHours(1), cancellationToken).ConfigureAwait(false);
+                delayed = true;
+            }
+
+            while ((nextOccurrence - DateTimeOffset.Now).TotalMinutes > timeThreshold)
+            {
+                _logger?.LogTrace(220579656, "Delaying one minute while waiting for {NextOccurance:G}...", nextOccurrence);
+                await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken).ConfigureAwait(false);
+                delayed = true;
+            }
+
+            while ((nextOccurrence - DateTimeOffset.Now).TotalSeconds > timeThreshold)
+            {
+                _logger?.LogTrace(-274608716, "Delaying one second while waiting for {NextOccurance:G}...", nextOccurrence);
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+                delayed = true;
+            }
+
+            var delayMilliseconds = (int)Math.Round((nextOccurrence - DateTimeOffset.Now).TotalMilliseconds);
+            if (delayMilliseconds > 0)
+            {
+                _logger?.LogTrace(-148452585, "Delaying {DelayMilliseconds} milliseconds while waiting for {NextOccurance:G}...", delayMilliseconds, nextOccurrence);
+                await Task.Delay(delayMilliseconds, cancellationToken).ConfigureAwait(false);
+                delayed = true;
+            }
+
+            if (!delayed)
+            {
+                // If there was no delay, make sure we yield back to the caller. This prevents a potential stack overflow exception.
+                await Task.Yield();
+            }
+        }
     }
 
     [MemberNotNull(nameof(_cronExpressions), nameof(_rawExpression), nameof(_timeZone))]
@@ -346,34 +394,6 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
 
         return false;
-    }
-
-    private async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
-    {
-        // Make sure we're looking at the right options.
-        if (optionsName != GetType().GetFullName())
-            return;
-
-        // Reload the settings. If nothing changed, don't restart the background task.
-        if (!LoadSettings(options))
-            return;
-
-        // If the options change before the service starts, don't restart the background task.
-        if (!IsStarted)
-            return;
-
-        // Signal reloading cancellation to the executing method.
-        _reloadingCts.Cancel();
-
-        // Wait until the task completes.
-        await _currentCronJobTask.ConfigureAwait(false);
-
-        // Recreate the reloading token.
-        _reloadingCts.Dispose();
-        _reloadingCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token);
-
-        // Start and store (but don't await) the next cron job task.
-        _currentCronJobTask = ExecuteNextCronJob();
     }
 
 #pragma warning disable SA1204 // Static elements should appear before instance elements

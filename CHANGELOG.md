@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Changed
+
+- Wait more efficiently for the next job.
+
 ## [2.0.0] - 2024-06-21
 
 ### Changed
