@@ -61,7 +61,7 @@ Add the cron job the an application with the `AddCronJob` extension method. Pass
 cron job.
 
 ```c#
-services.AddCronJob<MyCronJob>(services.GetSection("MyCronJob"));
+services.AddCronJob<MyCronJob>(configuration.GetSection("MyCronJob"));
 ```
 
 That's it. When you run your application, the cron job will fire every Monday at 1 AM.
