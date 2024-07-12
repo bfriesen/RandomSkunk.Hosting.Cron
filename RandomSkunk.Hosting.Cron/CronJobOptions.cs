@@ -28,6 +28,12 @@ public class CronJobOptions
     public string? TimeZone { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the cron job will run immediately at startup, regardless of the next scheduled
+    /// time. Default is <see langword="false"/>.
+    /// </summary>
+    public bool RunAtStartup { get; set; }
+
+    /// <summary>
     /// Sets the time zone of the cron job.
     /// </summary>
     /// <param name="timeZone">The <see cref="TimeZoneInfo"/> of the cron job.</param>

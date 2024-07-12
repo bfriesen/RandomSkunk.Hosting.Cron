@@ -2,6 +2,7 @@ using Cronos;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
@@ -19,6 +20,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
 
     private readonly IDisposable? _optionsReloadToken;
     private readonly ILogger _logger;
+    private readonly bool _runAtStartup;
 
     private CronExpression[] _cronExpressions;
     private string _rawExpression;
@@ -53,7 +55,9 @@ public abstract partial class CronJob : IHostedService, IDisposable
             throw new ArgumentNullException(nameof(optionsMonitor));
 
         _logger = logger ?? new NullLogger();
-        LoadSettings(optionsMonitor.Get(GetType().GetFullName()));
+        var cronJobOptions = optionsMonitor.Get(GetType().GetFullName());
+        _runAtStartup = cronJobOptions.RunAtStartup;
+        LoadSettings(cronJobOptions);
         _optionsReloadToken = optionsMonitor.OnChange(ReloadSettingsAndRestartBackgroundTask);
 
         async void ReloadSettingsAndRestartBackgroundTask(CronJobOptions options, string? optionsName)
@@ -103,18 +107,47 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="logger">An optional <see cref="ILogger"/>.</param>
     /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
     ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    /// <param name="runAtStartup">Whether the cron job will run immediately at startup, regardless of the next scheduled time.
+    ///     </param>
     /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null or empty.</exception>
     /// <exception cref="InvalidOperationException">If <paramref name="cronExpression"/> is invalid.</exception>
-    protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null)
+    protected CronJob(string cronExpression, ILogger? logger = null, TimeZoneInfo? timeZone = null, bool runAtStartup = false)
     {
         if (string.IsNullOrEmpty(cronExpression))
             throw new ArgumentNullException(nameof(cronExpression));
 
         _logger = logger ?? new NullLogger();
+        _runAtStartup = runAtStartup;
         LoadSettings(new CronJobOptions { CronExpression = cronExpression, TimeZone = timeZone?.Id });
 
         // Opt out of reloading for this constructor.
         _optionsReloadToken = null;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CronJob"/> class with the specified cron expression. See the
+    /// <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos documentation</a> for information
+    /// about the format of cron expressions.
+    /// </summary>
+    /// <param name="cronExpression">A cron expression that represents the schedule of the service. See the
+    ///     <a href="https://github.com/HangfireIO/Cronos?tab=readme-ov-file#cron-format">Cronos documentation</a> for
+    ///     information about the format of cron expressions.
+    ///     <para>
+    ///     To use more than one cron expression for the cron job, this value should consist of a semicolon delimited list of
+    ///     cron expressions, e.g. <c>"0 23 * * SUN-THU; 0 1 * * SAT-SUN"</c>. In this case, when the cron job determines its
+    ///     next occurence time, each cron expression is evaluated for its next occurence time and one closest to "now" is
+    ///     selected.
+    ///     </para>
+    /// </param>
+    /// <param name="logger">An optional <see cref="ILogger"/>.</param>
+    /// <param name="timeZone">An optional <see cref="TimeZoneInfo"/> the defines when a day starts as far as cron scheduling is
+    ///     concerned. Default value is <see cref="TimeZoneInfo.Local"/>.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="cronExpression"/> is null or empty.</exception>
+    /// <exception cref="InvalidOperationException">If <paramref name="cronExpression"/> is invalid.</exception>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    protected CronJob(string cronExpression, ILogger? logger, TimeZoneInfo? timeZone)
+        : this(cronExpression, logger, timeZone, false)
+    {
     }
 
     [MemberNotNullWhen(true, nameof(_currentCronJobTask), nameof(_stoppingCts), nameof(_reloadingCts))]
@@ -132,21 +165,19 @@ public abstract partial class CronJob : IHostedService, IDisposable
         _reloadingCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token);
 
         // Start and store (but don't await) the next cron job task.
-        _currentCronJobTask = ExecuteNextCronJob();
+        if (_runAtStartup)
+            _currentCronJobTask = ExecuteCronJobAtStartup(_reloadingCts.Token);
+        else
+            _currentCronJobTask = ExecuteNextCronJob();
 
-        try
-        {
-            // If the task is completed then return it, this will bubble cancellation and failure to the caller.
-            if (_currentCronJobTask.IsCompleted)
-                return _currentCronJobTask;
+        _logger.LogInformation(843635087, "Cron job service started.");
 
-            // Otherwise it's running.
-            return Task.CompletedTask;
-        }
-        finally
-        {
-            _logger.LogInformation(843635087, "Cron job service started.");
-        }
+        // If the task is completed then return it, this will bubble cancellation and failure to the caller.
+        if (_currentCronJobTask.IsCompleted)
+            return _currentCronJobTask;
+
+        // Otherwise it's running.
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc/>
@@ -186,6 +217,33 @@ public abstract partial class CronJob : IHostedService, IDisposable
     /// <param name="cancellationToken">Triggered when the service is stopping or the start process has been aborted.</param>
     /// <returns>A <see cref="Task"/> that represents the asynchronous scheduled operation.</returns>
     protected abstract Task DoWork(CancellationToken cancellationToken);
+
+    private async Task ExecuteCronJobAtStartup(CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+
+        _logger.LogDebug(314633121, "Executing startup job...");
+
+        try
+        {
+            // Do the work of the cron job.
+            await DoWork(cancellationToken).ConfigureAwait(false);
+
+            _logger.LogDebug(1060256648, "Startup job complete.");
+        }
+        catch (TaskCanceledException)
+        {
+            // The service is stopping or the start process was aborted; return immediately.
+            return;
+        }
+        catch (Exception ex)
+        {
+            LogExceptionThrownWhileRunningCronJob(ex);
+        }
+
+        // Start and store (but don't await) the next cron job task.
+        _currentCronJobTask = ExecuteNextCronJob();
+    }
 
     private async Task ExecuteNextCronJob()
     {
@@ -233,8 +291,7 @@ public abstract partial class CronJob : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            // Log the exception if a logger was provided.
-            LogExceptionThrownWhileRunningScheduledCronJob(ex);
+            LogExceptionThrownWhileRunningCronJob(ex);
         }
 
         // Last chance to gracefully handle cancellation before making the recursive call.
@@ -425,8 +482,8 @@ public abstract partial class CronJob : IHostedService, IDisposable
     [LoggerMessage(LogLevel.Trace, "Delaying final {DelayMilliseconds} milliseconds while waiting for the next job at {NextOccurrence:G}.")]
     private partial void LogDelayingFinalMilliseconds(int delayMilliseconds, DateTimeOffset nextOccurrence);
 
-    [LoggerMessage(LogLevel.Error, "An exception was thrown while running the scheduled cron job.")]
-    private partial void LogExceptionThrownWhileRunningScheduledCronJob(Exception exception);
+    [LoggerMessage(LogLevel.Error, "An exception was thrown while running the cron job.")]
+    private partial void LogExceptionThrownWhileRunningCronJob(Exception exception);
 
 #pragma warning disable SA1204 // Static elements should appear before instance elements
 #if NET7_0_OR_GREATER

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- Add setting to run the cron job immediately at startup.
+
 ### Changed
 
 - Wait more efficiently for the next job.
